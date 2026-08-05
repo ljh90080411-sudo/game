@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>솔 인첸트</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Song+Myung&family=Cinzel:wght@500;700&family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+
+  :root{
+    --bg:#120c1f;
+    --bg-2:#180f26;
+    --surface:#1d1530;
+    --surface-2:#26193f;
+    --gold:#e0b15c;
+    --gold-bright:#f6d488;
+    --violet:#9b7bff;
+    --violet-soft:rgba(155,123,255,0.16);
+    --text:#f2ead9;
+    --text-muted:#a595b8;
+    --success:#6fd08c;
+    --danger:#e0707a;
+    --border:rgba(224,177,92,0.22);
+    --radius:14px;
+    --shadow:0 10px 30px rgba(0,0,0,0.45);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(circle at 50% -10%, #2a1d46 0%, transparent 55%),
+      radial-gradient(circle at 90% 100%, #1a2a46 0%, transparent 45%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Noto Sans KR', sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  #root{min-height:100vh; display:flex; flex-direction:column; align-items:center;}
+
+  .brand-kr{font-family:'Song Myung', serif;}
+  .brand-en{font-family:'Cinzel', serif; letter-spacing:.28em; text-transform:uppercase;}
+
+  a, button, input, select, textarea{font-family:inherit;}
+  button{cursor:pointer;}
+  input, select, textarea{
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:10px;
+    padding:12px 14px;
+    font-size:15px;
+    outline:none;
+    width:100%;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  input:focus, select:focus, textarea:focus{
+    border-color:var(--gold);
+    box-shadow:0 0 0 3px rgba(224,177,92,0.18);
+  }
+  input::placeholder, textarea::placeholder{color:var(--text-muted);}
+
+  /* ---------- rune emblem ---------- */
+  .rune{
+    display:block;
+  }
+  .rune-spin{
+    animation:spin 70s linear infinite;
+    transform-origin:50% 50%;
+  }
+  .rune-spin-rev{
+    animation:spinrev 90s linear infinite;
+    transform-origin:50% 50%;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  @keyframes spinrev{ to{ transform:rotate(-360deg); } }
+  @media (prefers-reduced-motion: reduce){
+    .rune-spin, .rune-spin-rev{ animation:none; }
+  }
+
+  /* ---------- login screen ---------- */
+  .login-wrap{
+    flex:1;
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:32px 20px;
+    position:relative;
+  }
+  .login-card{
+    width:100%;
+    max-width:380px;
+    background:linear-gradient(180deg, var(--surface) 0%, var(--bg-2) 100%);
+    border:1px solid var(--border);
+    border-radius:20px;
+    padding:36px 28px 30px;
+    box-shadow:var(--shadow);
+    position:relative;
+    z-index:2;
+    text-align:center;
+  }
+  .emblem-box{
+    width:96px; height:96px;
+    margin:0 auto 14px;
+    position:relative;
+  }
+  .login-title{
+    font-size:30px;
+    letter-spacing:.04em;
+    margin:6px 0 2px;
+    color:var(--gold-bright);
+    text-shadow:0 0 18px rgba(224,177,92,0.35);
+  }
+  .login-sub{
+    font-size:11px;
+    color:var(--text-muted);
+    margin-bottom:26px;
+  }
+  .field{margin-bottom:12px; text-align:left;}
+  .field label{
+    display:block;
+    font-size:12px;
+    color:var(--text-muted);
+    margin-bottom:6px;
+  }
+  .err-msg{
+    color:var(--danger);
+    font-size:12.5px;
+    margin:-2px 0 10px;
+    text-align:left;
+    min-height:16px;
+  }
+  .btn-primary{
+    width:100%;
+    padding:13px;
+    border:none;
+    border-radius:10px;
+    background:linear-gradient(180deg, var(--gold-bright), var(--gold));
+    color:#241705;
+    font-weight:700;
+    font-size:15px;
+    margin-top:6px;
+    box-shadow:0 6px 18px rgba(224,177,92,0.25);
+    transition:transform .1s, box-shadow .15s;
+  }
+  .btn-primary:hover{ box-shadow:0 8px 22px rgba(224,177,92,0.4); }
+  .btn-primary:active{ transform:translateY(1px); }
+  .btn-primary:disabled{ opacity:.55; cursor:default; }
+  .switch-link{
+    margin-top:18px;
+    font-size:13px;
+    color:var(--text-muted);
+  }
+  .switch-link button{
+    background:none; border:none; color:var(--violet);
+    font-size:13px; font-weight:700; text-decoration:underline;
+    padding:0;
+  }
+
+  /* ---------- app shell ---------- */
+  .app-shell{ width:100%; max-width:520px; min-height:100vh; display:flex; flex-direction:column; }
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 18px 14px;
+    border-bottom:1px solid var(--border);
+    position:sticky; top:0;
+    background:rgba(18,12,31,0.92);
+    backdrop-filter:blur(6px);
+    z-index:10;
+  }
+  .topbar-left{display:flex; align-items:center; gap:10px;}
+  .topbar-emblem{width:34px; height:34px;}
+  .topbar-title{font-size:17px; color:var(--gold-bright); letter-spacing:.02em;}
+  .topbar-user{font-size:11.5px; color:var(--text-muted); margin-top:1px;}
+  .logout-btn{
+    background:transparent; border:1px solid var(--border);
+    color:var(--text-muted); border-radius:8px; padding:7px 11px;
+    font-size:12.5px;
+  }
+  .logout-btn:hover{ color:var(--text); border-color:var(--gold); }
+
+  .tabbar{
+    display:flex; gap:6px;
+    padding:12px 14px 0;
+  }
+  .tab-btn{
+    flex:1;
+    background:var(--surface);
+    border:1px solid var(--border);
+    color:var(--text-muted);
+    padding:10px 6px;
+    border-radius:10px 10px 0 0;
+    font-size:12.5px;
+    font-weight:500;
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    border-bottom:none;
+  }
+  .tab-btn.active{
+    color:var(--gold-bright);
+    background:var(--surface-2);
+    box-shadow:0 -2px 0 var(--gold) inset;
+  }
+
+  .content{
+    flex:1;
+    background:var(--surface-2);
+    padding:16px 16px 90px;
+    overflow-y:auto;
+  }
+  .section-desc{
+    font-size:12.5px; color:var(--text-muted);
+    margin:2px 0 16px;
+  }
+  .date-heading{
+    font-size:12px; color:var(--gold); font-weight:700;
+    letter-spacing:.04em;
+    margin:18px 0 8px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .date-heading::after{
+    content:''; flex:1; height:1px;
+    background:linear-gradient(90deg, var(--border), transparent);
+  }
+  .date-heading:first-child{ margin-top:0; }
+
+  .record-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:14px 14px 12px;
+    margin-bottom:10px;
+    position:relative;
+  }
+  .record-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .record-title{ font-size:14.5px; font-weight:700; color:var(--text); }
+  .badge{
+    font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px;
+    display:inline-block;
+  }
+  .badge-win{ background:rgba(111,208,140,0.16); color:var(--success); }
+  .badge-lose{ background:rgba(224,112,122,0.16); color:var(--danger); }
+  .badge-in{ background:rgba(224,177,92,0.16); color:var(--gold-bright); }
+  .badge-out{ background:var(--violet-soft); color:var(--violet); }
+  .badge-neutral{ background:var(--violet-soft); color:var(--violet); }
+  .record-meta{ font-size:12.5px; color:var(--text-muted); line-height:1.6; }
+  .record-meta b{ color:var(--text); font-weight:600; }
+  .chip-row{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .chip{
+    background:var(--violet-soft); color:var(--violet);
+    font-size:11.5px; padding:3px 9px; border-radius:20px;
+  }
+  .record-foot{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-top:8px; font-size:11px; color:var(--text-muted);
+  }
+  .del-btn{
+    background:none; border:none; color:var(--text-muted);
+    font-size:16px; line-height:1; padding:2px 4px;
+  }
+  .del-btn:hover{ color:var(--danger); }
+
+  .empty-state{
+    text-align:center; padding:50px 20px; color:var(--text-muted);
+  }
+  .empty-emblem{ width:56px; height:56px; margin:0 auto 14px; opacity:.5; }
+  .empty-state p{ font-size:13.5px; }
+
+  .fab{
+    position:fixed;
+    bottom:26px; left:50%;
+    transform:translateX(calc(-50% + 220px));
+    width:56px; height:56px;
+    border-radius:50%;
+    border:none;
+    background:linear-gradient(180deg, var(--gold-bright), var(--gold));
+    color:#241705;
+    font-size:26px; font-weight:700;
+    box-shadow:0 8px 24px rgba(224,177,92,0.4);
+    z-index:20;
+  }
+  @media (max-width:559px){
+    .fab{ left:auto; right:22px; transform:none; }
+  }
+
+  /* ---------- modal ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(8,5,14,0.72);
+    display:flex; align-items:flex-end; justify-content:center;
+    z-index:50;
+  }
+  .modal-card{
+    width:100%; max-width:520px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:20px 20px 0 0;
+    padding:22px 20px 26px;
+    max-height:88vh; overflow-y:auto;
+  }
+  .modal-title{
+    font-size:17px; color:var(--gold-bright); margin-bottom:16px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .modal-close{
+    background:none; border:none; color:var(--text-muted); font-size:20px;
+  }
+  .field-row{ display:flex; gap:10px; }
+  .field-row .field{ flex:1; }
+
+  .loading-wrap{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:14px; color:var(--text-muted); font-size:13px;
+  }
+
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:var(--surface); border:1px solid var(--border);
+    color:var(--text); padding:11px 18px; border-radius:30px;
+    font-size:13px; box-shadow:var(--shadow); z-index:80;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+const { useState, useEffect, useCallback } = window.React || {};
+</script>
+<script type="text/javascript">
+(function(){
+
+/* ============ rune SVG builders ============ */
+function runeSVG(size, id){
+  return `
+  <svg class="rune" viewBox="0 0 100 100" width="${size}" height="${size}">
+    <g class="rune-spin">
+      <circle cx="50" cy="50" r="46" fill="none" stroke="var(--gold)" stroke-width="1.1" opacity="0.55"/>
+      ${Array.from({length:12}).map((_,i)=>{
+        const a = (i*30)*Math.PI/180;
+        const x1 = 50+42*Math.cos(a), y1 = 50+42*Math.sin(a);
+        const x2 = 50+46*Math.cos(a), y2 = 50+46*Math.sin(a);
+        return `<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="var(--gold)" stroke-width="1" opacity="0.5"/>`;
+      }).join('')}
+    </g>
+    <g class="rune-spin-rev">
+      <circle cx="50" cy="50" r="32" fill="none" stroke="var(--violet)" stroke-width="1" opacity="0.6" stroke-dasharray="3 5"/>
+    </g>
+    <circle cx="50" cy="50" r="20" fill="none" stroke="var(--gold-bright)" stroke-width="1.4" opacity="0.85"/>
+    <path d="M50 34 L58 50 L50 66 L42 50 Z" fill="var(--gold-bright)" opacity="0.9"/>
+  </svg>`;
+}
+
+/* ============ storage helpers ============ */
+async function getShared(key, fallback){
+  try{
+    const r = await window.storage.get(key, true);
+    return r ? JSON.parse(r.value) : fallback;
+  }catch(e){ return fallback; }
+}
+async function setShared(key, value){
+  await window.storage.set(key, JSON.stringify(value), true);
+}
+async function sha256(text){
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+const RECORD_KEYS = {
+  pvp: 'pvp-records',
+  storage: 'guild-storage-records',
+  boss: 'boss-records'
+};
+
+/* ============ app state ============ */
+let state = {
+  screen:'loading', // loading | login | signup | app
+  errorMsg:'',
+  user:null, // {id, nickname}
+  activeTab:'pvp',
+  records:{ pvp:[], storage:[], boss:[] },
+  modalOpen:false,
+  toast:null,
+};
+
+function setState(patch){
+  state = Object.assign({}, state, patch);
+  render();
+}
+
+/* ============ init ============ */
+async function init(){
+  setState({screen:'login'});
+}
+
+/* ============ auth ============ */
+async function handleSignup(id, pw, nickname){
+  id = id.trim(); nickname = nickname.trim();
+  if(!id || !pw || !nickname){ setState({errorMsg:'모든 항목을 입력해 주세요.'}); return; }
+  if(pw.length < 4){ setState({errorMsg:'비밀번호는 4자 이상이어야 해요.'}); return; }
+  const users = await getShared('users', {});
+  if(users[id]){ setState({errorMsg:'이미 사용 중인 아이디예요.'}); return; }
+  const hash = await sha256(pw);
+  users[id] = { password:hash, nickname, createdAt:Date.now() };
+  await setShared('users', users);
+  await enterApp({id, nickname});
+}
+
+async function handleLogin(id, pw){
+  id = id.trim();
+  if(!id || !pw){ setState({errorMsg:'아이디와 비밀번호를 입력해 주세요.'}); return; }
+  const users = await getShared('users', {});
+  const u = users[id];
+  if(!u){ setState({errorMsg:'존재하지 않는 아이디예요.'}); return; }
+  const hash = await sha256(pw);
+  if(hash !== u.password){ setState({errorMsg:'비밀번호가 일치하지 않아요.'}); return; }
+  await enterApp({id, nickname:u.nickname});
+}
+
+async function enterApp(user){
+  setState({screen:'loading'});
+  const [pvp, storageRecs, boss] = await Promise.all([
+    getShared(RECORD_KEYS.pvp, []),
+    getShared(RECORD_KEYS.storage, []),
+    getShared(RECORD_KEYS.boss, [])
+  ]);
+  setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, errorMsg:'' });
+}
+
+function handleLogout(){
+  setState({ screen:'login', user:null, errorMsg:'', activeTab:'pvp' });
+}
+
+/* ============ records ============ */
+async function addRecord(type, data){
+  const key = RECORD_KEYS[type];
+  const list = (await getShared(key, [])).slice();
+  const rec = Object.assign({ id:uid(), author:state.user.id, authorNick:state.user.nickname, createdAt:Date.now() }, data);
+  list.push(rec);
+  await setShared(key, list);
+  const records = Object.assign({}, state.records, {[type]:list});
+  setState({ records, modalOpen:false, toast:'기록이 추가됐어요.' });
+  setTimeout(()=>setState({toast:null}), 1800);
+}
+
+async function deleteRecord(type, id){
+  const key = RECORD_KEYS[type];
+  const list = (await getShared(key, [])).filter(r=>r.id!==id);
+  await setShared(key, list);
+  const records = Object.assign({}, state.records, {[type]:list});
+  setState({ records });
+}
+
+/* ============ render helpers ============ */
+function esc(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtDate(d){
+  const dt = new Date(d+'T00:00:00');
+  const days = ['일','월','화','수','목','금','토'];
+  return `${d.slice(5).replace('-','.')} (${days[dt.getDay()]})`;
+}
+
+const TAB_META = {
+  pvp:{ label:'PVP 기록실', icon:'⚔' },
+  storage:{ label:'길드 창고', icon:'⛃' },
+  boss:{ label:'보스타임', icon:'☠' },
+};
+
+/* ============ screens ============ */
+function renderLoading(){
+  return `<div class="loading-wrap">${runeSVG(64)}<div>불러오는 중...</div></div>`;
+}
+
+function renderLogin(mode){
+  const isSignup = mode==='signup';
+  return `
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="emblem-box">${runeSVG(96)}</div>
+      <div class="login-title brand-kr">솔 인첸트</div>
+      <div class="login-sub brand-en">Sol Enchant · Guild Log</div>
+
+      ${isSignup ? `
+      <div class="field">
+        <label>길드원 이름 (닉네임)</label>
+        <input id="in-nick" type="text" placeholder="게임 내 닉네임" maxlength="16">
+      </div>` : ``}
+
+      <div class="field">
+        <label>아이디</label>
+        <input id="in-id" type="text" placeholder="아이디" autocomplete="username" maxlength="20">
+      </div>
+      <div class="field">
+        <label>비밀번호</label>
+        <input id="in-pw" type="password" placeholder="비밀번호 (4자 이상)" autocomplete="${isSignup?'new-password':'current-password'}">
+      </div>
+      <div class="err-msg">${esc(state.errorMsg)}</div>
+
+      <button class="btn-primary" id="btn-submit">${isSignup?'회원가입하고 시작하기':'로그인'}</button>
+
+      <div class="switch-link">
+        ${isSignup ? '이미 계정이 있으신가요? ' : '계정이 없으신가요? '}
+        <button id="btn-switch">${isSignup?'로그인':'회원가입'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderTopbar(){
+  return `
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-emblem">${runeSVG(34)}</div>
+      <div>
+        <div class="topbar-title brand-kr">솔 인첸트</div>
+        <div class="topbar-user">${esc(state.user.nickname)}님 접속 중</div>
+      </div>
+    </div>
+    <button class="logout-btn" id="btn-logout">로그아웃</button>
+  </div>`;
+}
+
+function renderTabbar(){
+  return `
+  <div class="tabbar">
+    ${Object.keys(TAB_META).map(k=>{
+      const m = TAB_META[k];
+      return `<button class="tab-btn ${state.activeTab===k?'active':''}" data-tab="${k}">
+        <span>${m.icon}</span><span>${m.label}</span>
+      </button>`;
+    }).join('')}
+  </div>`;
+}
+
+function groupByDate(list){
+  const sorted = list.slice().sort((a,b)=> (b.date+b.createdAt) > (a.date+a.createdAt) ? 1 : -1);
+  const groups = [];
+  let last = null;
+  sorted.forEach(r=>{
+    if(r.date !== last){ groups.push({date:r.date, items:[]}); last = r.date; }
+    groups[groups.length-1].items.push(r);
+  });
+  return groups;
+}
+
+function renderPvpCard(r){
+  const canDel = r.author === state.user.id;
+  return `
+  <div class="record-card">
+    <div class="record-top">
+      <div class="record-title">vs ${esc(r.opponent)}</div>
+      <span class="badge ${r.result==='승'?'badge-win':'badge-lose'}">${r.result}${r.score?` · ${r.score>0?'+':''}${esc(r.score)}`:''}</span>
+    </div>
+    <div class="record-meta">${r.memo?esc(r.memo):'메모 없음'}</div>
+    <div class="record-foot">
+      <span>기록자 · ${esc(r.authorNick)}</span>
+      ${canDel?`<button class="del-btn" data-del="pvp:${r.id}">×</button>`:''}
+    </div>
+  </div>`;
+}
+function renderStorageCard(r){
+  const canDel = r.author === state.user.id;
+  return `
+  <div class="record-card">
+    <div class="record-top">
+      <div class="record-title">${esc(r.item)}</div>
+      <span class="badge ${r.direction==='입고'?'badge-in':'badge-out'}">${r.direction} ${esc(r.qty)}</span>
+    </div>
+    <div class="record-meta">${r.memo?esc(r.memo):'메모 없음'}</div>
+    <div class="record-foot">
+      <span>기록자 · ${esc(r.authorNick)}</span>
+      ${canDel?`<button class="del-btn" data-del="storage:${r.id}">×</button>`:''}
+    </div>
+  </div>`;
+}
+function renderBossCard(r){
+  const canDel = r.author === state.user.id;
+  const parts = (r.participants||'').split(',').map(s=>s.trim()).filter(Boolean);
+  return `
+  <div class="record-card">
+    <div class="record-top">
+      <div class="record-title">${esc(r.bossName)}</div>
+      <span class="badge badge-neutral">${esc(r.time||'')}</span>
+    </div>
+    <div class="chip-row">${parts.map(p=>`<span class="chip">${esc(p)}</span>`).join('') || '<span class="record-meta">참여자 없음</span>'}</div>
+    ${r.memo?`<div class="record-meta" style="margin-top:8px;">${esc(r.memo)}</div>`:''}
+    <div class="record-foot">
+      <span>기록자 · ${esc(r.authorNick)}</span>
+      ${canDel?`<button class="del-btn" data-del="boss:${r.id}">×</button>`:''}
+    </div>
+  </div>`;
+}
+
+const CARD_RENDERERS = { pvp:renderPvpCard, storage:renderStorageCard, boss:renderBossCard };
+const DESCS = {
+  pvp:'길드원들의 PVP 전적을 기록하고 공유해요.',
+  storage:'길드 창고의 입출고 내역을 기록해요.',
+  boss:'보스타임 참여 인원과 시간을 기록해요.'
+};
+
+function renderContent(){
+  const type = state.activeTab;
+  const list = state.records[type] || [];
+  const groups = groupByDate(list);
+  const renderer = CARD_RENDERERS[type];
+
+  let body;
+  if(groups.length === 0){
+    body = `<div class="empty-state">
+      <div class="empty-emblem">${runeSVG(56)}</div>
+      <p>아직 기록이 없어요.<br>오른쪽 아래 + 버튼으로 첫 기록을 남겨보세요.</p>
+    </div>`;
+  }else{
+    body = groups.map(g=>`
+      <div class="date-heading">${fmtDate(g.date)}</div>
+      ${g.items.map(renderer).join('')}
+    `).join('');
+  }
+
+  return `
+  <div class="content">
+    <div class="section-desc">${DESCS[type]}</div>
+    ${body}
+  </div>
+  <button class="fab" id="btn-add">+</button>`;
+}
+
+function renderModal(){
+  if(!state.modalOpen) return '';
+  const type = state.activeTab;
+  let fields = '';
+  if(type==='pvp'){
+    fields = `
+      <div class="field-row">
+        <div class="field"><label>날짜</label><input id="f-date" type="date" value="${todayStr()}"></div>
+        <div class="field"><label>결과</label>
+          <select id="f-result"><option value="승">승리</option><option value="패">패배</option></select>
+        </div>
+      </div>
+      <div class="field"><label>상대 닉네임</label><input id="f-opponent" type="text" placeholder="상대 닉네임"></div>
+      <div class="field"><label>점수 변동 (선택)</label><input id="f-score" type="number" placeholder="예: 15 또는 -12"></div>
+      <div class="field"><label>메모 (선택)</label><textarea id="f-memo" rows="2" placeholder="특이사항 메모"></textarea></div>
+    `;
+  }else if(type==='storage'){
+    fields = `
+      <div class="field-row">
+        <div class="field"><label>날짜</label><input id="f-date" type="date" value="${todayStr()}"></div>
+        <div class="field"><label>구분</label>
+          <select id="f-direction"><option value="입고">입고</option><option value="출고">출고</option></select>
+        </div>
+      </div>
+      <div class="field"><label>아이템명</label><input id="f-item" type="text" placeholder="아이템 이름"></div>
+      <div class="field"><label>수량</label><input id="f-qty" type="number" placeholder="수량" min="1"></div>
+      <div class="field"><label>메모 (선택)</label><textarea id="f-memo" rows="2" placeholder="용도, 사유 등"></textarea></div>
+    `;
+  }else{
+    fields = `
+      <div class="field-row">
+        <div class="field"><label>날짜</label><input id="f-date" type="date" value="${todayStr()}"></div>
+        <div class="field"><label>시간</label><input id="f-time" type="time"></div>
+      </div>
+      <div class="field"><label>보스명</label><input id="f-boss" type="text" placeholder="보스 이름"></div>
+      <div class="field"><label>참여자 (쉼표로 구분)</label><input id="f-participants" type="text" placeholder="예: 홍길동, 김철수"></div>
+      <div class="field"><label>메모 (선택)</label><textarea id="f-memo" rows="2" placeholder="특이사항 메모"></textarea></div>
+    `;
+  }
+
+  return `
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>${TAB_META[type].label} 기록 추가</span>
+        <button class="modal-close" id="btn-modal-close">✕</button>
+      </div>
+      ${fields}
+      <div class="err-msg" id="modal-err"></div>
+      <button class="btn-primary" id="btn-modal-save">저장하기</button>
+    </div>
+  </div>`;
+}
+
+/* ============ main render ============ */
+function render(){
+  const root = document.getElementById('root');
+  let html = '';
+
+  if(state.screen==='loading'){
+    html = `<div id="root-inner" style="display:flex;flex-direction:column;min-height:100vh;width:100%;align-items:center;">${renderLoading()}</div>`;
+  }else if(state.screen==='login' || state.screen==='signup'){
+    html = renderLogin(state.screen);
+  }else if(state.screen==='app'){
+    html = `
+    <div class="app-shell">
+      ${renderTopbar()}
+      ${renderTabbar()}
+      ${renderContent()}
+    </div>
+    ${renderModal()}
+    ${state.toast?`<div class="toast">${esc(state.toast)}</div>`:''}
+    `;
+  }
+
+  root.innerHTML = html;
+  attachHandlers();
+}
+
+function attachHandlers(){
+  const $ = sel => document.querySelector(sel);
+
+  if(state.screen==='login' || state.screen==='signup'){
+    const submit = () => {
+      const id = $('#in-id').value;
+      const pw = $('#in-pw').value;
+      if(state.screen==='signup'){
+        const nick = $('#in-nick').value;
+        handleSignup(id, pw, nick);
+      }else{
+        handleLogin(id, pw);
+      }
+    };
+    $('#btn-submit').onclick = submit;
+    [$('#in-id'), $('#in-pw')].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Enter') submit(); }));
+    $('#btn-switch').onclick = () => setState({ screen: state.screen==='signup'?'login':'signup', errorMsg:'' });
+  }
+
+  if(state.screen==='app'){
+    $('#btn-logout').onclick = handleLogout;
+    document.querySelectorAll('.tab-btn').forEach(btn=>{
+      btn.onclick = () => setState({ activeTab: btn.getAttribute('data-tab'), modalOpen:false });
+    });
+    const addBtn = document.getElementById('btn-add');
+    if(addBtn) addBtn.onclick = () => setState({ modalOpen:true });
+
+    document.querySelectorAll('[data-del]').forEach(btn=>{
+      btn.onclick = () => {
+        const [type, id] = btn.getAttribute('data-del').split(':');
+        if(confirm('이 기록을 삭제할까요?')) deleteRecord(type, id);
+      };
+    });
+
+    const overlay = document.getElementById('modal-overlay');
+    if(overlay){
+      overlay.addEventListener('click', e=>{ if(e.target===overlay) setState({modalOpen:false}); });
+      $('#btn-modal-close').onclick = () => setState({modalOpen:false});
+      $('#btn-modal-save').onclick = () => submitModal();
+    }
+  }
+}
+
+function submitModal(){
+  const $ = sel => document.querySelector(sel);
+  const type = state.activeTab;
+  const date = $('#f-date').value || todayStr();
+  const errEl = $('#modal-err');
+
+  if(type==='pvp'){
+    const opponent = $('#f-opponent').value.trim();
+    const result = $('#f-result').value;
+    const score = $('#f-score').value;
+    const memo = $('#f-memo').value.trim();
+    if(!opponent){ errEl.textContent='상대 닉네임을 입력해 주세요.'; return; }
+    addRecord('pvp', { date, opponent, result, score: score?Number(score):null, memo });
+  }else if(type==='storage'){
+    const item = $('#f-item').value.trim();
+    const direction = $('#f-direction').value;
+    const qty = $('#f-qty').value;
+    const memo = $('#f-memo').value.trim();
+    if(!item){ errEl.textContent='아이템명을 입력해 주세요.'; return; }
+    if(!qty || Number(qty)<=0){ errEl.textContent='수량을 입력해 주세요.'; return; }
+    addRecord('storage', { date, item, direction, qty:Number(qty), memo });
+  }else{
+    const bossName = $('#f-boss').value.trim();
+    const time = $('#f-time').value;
+    const participants = $('#f-participants').value.trim();
+    const memo = $('#f-memo').value.trim();
+    if(!bossName){ errEl.textContent='보스명을 입력해 주세요.'; return; }
+    addRecord('boss', { date, time, bossName, participants, memo });
+  }
+}
+
+init();
+})();
+</script>
+</body>
+</html>
