@@ -333,6 +333,17 @@ async function addKillLog(data){
   const ref = await addDoc(collection(db, 'killLogs'), data);
   return ref.id;
 }
+async function fetchBossLogs(){
+  const snap = await getDocs(collection(db, 'bossAttendance'));
+  return snap.docs.map(d => Object.assign({ id:d.id }, d.data()));
+}
+async function addBossLog(data){
+  const ref = await addDoc(collection(db, 'bossAttendance'), data);
+  return ref.id;
+}
+
+const FIXED_BOSS_TIMES = ['03:00','09:00','12:00','21:00','00:00'];
+const BOSS_TIME_LABELS = { '03:00':'오전 3시', '09:00':'오전 9시', '12:00':'낮 12시', '21:00':'오후 9시', '00:00':'자정 12시' };
 
 /* ============ 앱 상태 ============ */
 let state = {
@@ -348,6 +359,13 @@ let state = {
   toastErr:false,
   guildTracker:{ guildNames:['플레이어', '흑우들'] },
   guildModalOpen:false,
+  bossLogs:[],
+  bossTimeSlot:'03:00',
+  bossCustomTime:'',
+  bossOcrModalOpen:false,
+  bossOcrNames:[],
+  bossOcrDate:'',
+  bossOcrTimeSlot:'',
   ocrBusy:false,
   ocrProgress:'',
   ocrDebugOpen:false,
@@ -419,11 +437,11 @@ async function handleLogin(nickname, pw, remember){
 async function enterApp(user, remember){
   setState({ screen:'loading' });
   try{
-    const [pvp, storageRecs, boss, guildTracker, killLogs] = await Promise.all([
-      fetchRecords('pvp'), fetchRecords('storage'), fetchRecords('boss'), fetchGuildTracker(), fetchKillLogs()
+    const [pvp, storageRecs, boss, guildTracker, killLogs, bossLogs] = await Promise.all([
+      fetchRecords('pvp'), fetchRecords('storage'), fetchRecords('boss'), fetchGuildTracker(), fetchKillLogs(), fetchBossLogs()
     ]);
     if(remember){ saveSession(user); } else { clearSession(); }
-    setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, guildTracker, killLogs, errorMsg:'' });
+    setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, guildTracker, killLogs, bossLogs, errorMsg:'' });
   }catch(e){
     console.error(e);
     setState({ screen:'login', errorMsg:'데이터를 불러오지 못했어요. 다시 로그인해 주세요.' });
@@ -682,6 +700,101 @@ async function handleFilesSelected(files){
   }
 }
 
+/* ============ 보스타임 참가자 인식 ============ */
+function extractNameCandidates(text){
+  const raw = (text||'').split(/[\n,]+/).map(s=>cleanToken(s)).filter(Boolean);
+  const seen = new Set();
+  const names = [];
+  raw.forEach(tok=>{
+    if(tok.length < 2 || tok.length > 14) return;
+    if(/^[0-9]+$/.test(tok)) return;
+    if(seen.has(tok)) return;
+    seen.add(tok);
+    names.push(tok);
+  });
+  return names;
+}
+
+async function handleBossFilesSelected(files){
+  if(!files || !files.length) return;
+  const timeSlot = state.bossTimeSlot === 'custom' ? (state.bossCustomTime||'') : state.bossTimeSlot;
+  if(!timeSlot){ showToast('보스 시간을 먼저 선택해 주세요.', true); return; }
+  setState({ ocrBusy:true, ocrProgress:'준비 중...' });
+  try{
+    await loadTesseract();
+    let allNames = [];
+    let rawTextAll = '';
+    let debugImage = '';
+    for(const file of files){
+      setState({ ocrBusy:true, ocrProgress:`이미지 처리 중 (${file.name})` });
+      const canvas = await preprocessForOcr(file);
+      if(!debugImage){ try{ debugImage = canvas.toDataURL('image/png'); }catch(e){} }
+      setState({ ocrBusy:true, ocrProgress:`이미지 인식 중 (${file.name})` });
+      const { data } = await window.Tesseract.recognize(canvas, 'kor+eng', {
+        logger: m => {
+          if(m.status === 'recognizing text'){
+            setState({ ocrBusy:true, ocrProgress:`인식 중... ${Math.round((m.progress||0)*100)}%` });
+          }
+        }
+      });
+      rawTextAll += (rawTextAll?'\n\n----------\n\n':'') + (data.text || '');
+      allNames = allNames.concat(extractNameCandidates(data.text || ''));
+    }
+    const uniqueNames = Array.from(new Set(allNames));
+    if(uniqueNames.length === 0){
+      setState({ ocrBusy:false, ocrProgress:'', ocrDebugOpen:true, ocrDebugText: rawTextAll, ocrDebugImage: debugImage });
+      return;
+    }
+    const rows = uniqueNames.map(n => ({ name:n, include:true }));
+    setState({
+      ocrBusy:false, ocrProgress:'',
+      bossOcrModalOpen:true, bossOcrNames:rows,
+      bossOcrDate: todayStr(), bossOcrTimeSlot: timeSlot
+    });
+  }catch(e){
+    console.error(e);
+    setState({ ocrBusy:false, ocrProgress:'' });
+    showToast('이미지 인식에 실패했어요.', true);
+  }
+}
+
+async function saveBossOcrNames(){
+  const rows = state.bossOcrNames || [];
+  const date = state.bossOcrDate || todayStr();
+  const timeSlot = state.bossOcrTimeSlot || '';
+  if(!timeSlot){ showToast('보스 시간이 지정되지 않았어요.', true); return; }
+  let added = 0, dup = 0, skipped = 0;
+  for(let i=0;i<rows.length;i++){
+    const includeEl = document.getElementById(`boss-include-${i}`);
+    if(!includeEl || !includeEl.checked){ skipped++; continue; }
+    const nameEl = document.getElementById(`boss-name-${i}`);
+    const name = (nameEl && nameEl.value.trim()) || rows[i].name;
+    if(!name){ skipped++; continue; }
+    const key = `${date}_${timeSlot}_${name}`;
+    if(state.bossLogs.some(l => l.dedupeKey === key)){ dup++; continue; }
+    try{
+      const rec = { participant:name, date, timeSlot, uploader:state.user.id, uploaderNick:state.user.nickname, dedupeKey:key, createdAt:Date.now() };
+      const id = await addBossLog(rec);
+      state.bossLogs = state.bossLogs.concat([Object.assign({id}, rec)]);
+      added++;
+    }catch(e){
+      console.error(e);
+      skipped++;
+    }
+  }
+  setState({ bossOcrModalOpen:false, bossOcrNames:[] });
+  showToast(`${added}명 참가 등록 (+${added}점씩) · 중복 ${dup} · 제외 ${skipped}`);
+}
+
+function computeBossRanking(){
+  const totals = {};
+  (state.bossLogs||[]).forEach(l=>{
+    if(!totals[l.participant]) totals[l.participant] = 0;
+    totals[l.participant]++;
+  });
+  return Object.entries(totals).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
+}
+
 function getWeekRange(){
   const now = new Date();
   const dow = (now.getDay()+6)%7; // 월=0 ... 일=6
@@ -884,6 +997,41 @@ function renderPvpControls(){
   `;
 }
 
+function renderBossControls(){
+  const slot = state.bossTimeSlot || '03:00';
+  const ranking = computeBossRanking();
+
+  return `
+  <div style="margin-bottom:12px;">
+    <div class="record-meta" style="margin-bottom:6px;">참가 등록할 보스 시간</div>
+    <div style="display:flex; flex-wrap:wrap; gap:6px;">
+      ${FIXED_BOSS_TIMES.map(t=>`
+        <button class="logout-btn" data-boss-slot="${t}" style="padding:7px 10px; ${slot===t?'border-color:var(--gold); color:var(--gold-bright);':''}">${BOSS_TIME_LABELS[t]}</button>
+      `).join('')}
+      <button class="logout-btn" data-boss-slot="custom" style="padding:7px 10px; ${slot==='custom'?'border-color:var(--gold); color:var(--gold-bright);':''}">🎲 랜덤(직접입력)</button>
+    </div>
+    ${slot==='custom' ? `<input id="boss-custom-time" type="time" value="${esc(state.bossCustomTime||'')}" style="max-width:140px; margin-top:8px;">` : ''}
+  </div>
+  <div style="display:flex; gap:8px; margin-bottom:18px;">
+    <button class="logout-btn" id="btn-boss-ocr-upload" style="flex:1;">📷 참가자 스크린샷 등록</button>
+  </div>
+  <input type="file" id="boss-file-input" accept="image/*" multiple style="display:none;">
+
+  <div class="date-heading">보스 참가 랭킹 (누적, 1회=1점)</div>
+  ${ranking.length===0 ? `<div class="record-meta" style="padding:6px 2px 14px;">아직 참가 기록이 없어요.</div>` :
+    ranking.map((r,i)=>`
+      <div class="record-card" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin-bottom:6px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="color:${i===0?'var(--gold-bright)':'var(--text-muted)'}; font-weight:700; width:18px;">${i+1}</span>
+          <span style="${r.name===state.user.nickname?'color:var(--gold-bright); font-weight:700;':''}">${esc(r.name)}</span>
+        </div>
+        <span style="color:var(--success); font-weight:700;">${r.count}점</span>
+      </div>
+    `).join('')
+  }
+  `;
+}
+
 function renderContent(){
   const type = state.activeTab;
   const list = state.records[type] || [];
@@ -906,6 +1054,7 @@ function renderContent(){
   return `
   <div class="content">
     ${type==='pvp' ? renderPvpControls() : ''}
+    ${type==='boss' ? renderBossControls() : ''}
     <div class="section-desc">${DESCS[type]}</div>
     ${body}
   </div>
@@ -965,6 +1114,29 @@ function renderOcrDebugModal(){
       ${state.ocrDebugImage ? `<img src="${state.ocrDebugImage}" style="width:100%; border-radius:10px; border:1px solid var(--border); margin-bottom:12px;">` : `<div class="record-meta" style="margin-bottom:12px;">(처리된 이미지를 만들지 못했어요)</div>`}
       <div class="record-meta" style="margin-bottom:6px;">OCR이 실제로 읽어낸 원본 텍스트:</div>
       <textarea readonly rows="8" style="font-size:11.5px; line-height:1.5;">${esc(state.ocrDebugText||'(인식된 텍스트 없음)')}</textarea>
+    </div>
+  </div>`;
+}
+
+function renderBossOcrModal(){
+  if(!state.bossOcrModalOpen) return '';
+  const rows = state.bossOcrNames || [];
+  const timeLabel = state.bossOcrTimeSlot ? (BOSS_TIME_LABELS[state.bossOcrTimeSlot] || state.bossOcrTimeSlot) : '';
+  return `
+  <div class="modal-overlay" id="boss-ocr-modal-overlay">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>인식된 참가자 확인</span>
+        <button class="modal-close" id="btn-boss-ocr-close">✕</button>
+      </div>
+      <div class="record-meta" style="margin-bottom:12px;">${esc(state.bossOcrDate||'')} · ${esc(timeLabel)} 보스타임 참가자로 등록돼요. 인식이 틀렸으면 이름을 고치고, 참가자가 아니면 체크를 해제하세요.</div>
+      ${rows.map((r,i)=>`
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          <input type="checkbox" id="boss-include-${i}" style="width:auto;" ${r.include?'checked':''}>
+          <input id="boss-name-${i}" type="text" value="${esc(r.name)}" style="flex:1;">
+        </div>
+      `).join('')}
+      <button class="btn-primary" id="btn-boss-ocr-save" style="margin-top:8px;">참가자 등록하기 (+1점씩)</button>
     </div>
   </div>`;
 }
@@ -1042,6 +1214,7 @@ function render(){
     ${renderGuildModal()}
     ${renderOcrBusyOverlay()}
     ${renderOcrDebugModal()}
+    ${renderBossOcrModal()}
     `;
   }
   if(state.toast){
@@ -1127,6 +1300,35 @@ function attachHandlers(){
     if(ocrDebugOverlay){
       ocrDebugOverlay.addEventListener('click', e=>{ if(e.target===ocrDebugOverlay) setState({ocrDebugOpen:false, ocrDebugText:''}); });
       document.getElementById('btn-ocr-debug-close').onclick = () => setState({ocrDebugOpen:false, ocrDebugText:''});
+    }
+
+    document.querySelectorAll('[data-boss-slot]').forEach(btn=>{
+      btn.onclick = () => setState({ bossTimeSlot: btn.getAttribute('data-boss-slot') });
+    });
+    const bossCustomTimeInput = document.getElementById('boss-custom-time');
+    if(bossCustomTimeInput){
+      bossCustomTimeInput.addEventListener('change', e=> setState({ bossCustomTime: e.target.value }));
+    }
+    const bossOcrUploadBtn = document.getElementById('btn-boss-ocr-upload');
+    const bossFileInput = document.getElementById('boss-file-input');
+    if(bossOcrUploadBtn && bossFileInput){
+      bossOcrUploadBtn.onclick = () => {
+        const slot = state.bossTimeSlot === 'custom' ? state.bossCustomTime : state.bossTimeSlot;
+        if(!slot){ showToast('보스 시간을 먼저 선택해 주세요.', true); return; }
+        bossFileInput.click();
+      };
+      bossFileInput.onchange = (e) => {
+        const filesArr = Array.from(e.target.files || []);
+        e.target.value = '';
+        if(filesArr.length === 0){ showToast('선택된 이미지가 없어요.', true); return; }
+        handleBossFilesSelected(filesArr);
+      };
+    }
+    const bossOcrOverlay = document.getElementById('boss-ocr-modal-overlay');
+    if(bossOcrOverlay){
+      bossOcrOverlay.addEventListener('click', e=>{ if(e.target===bossOcrOverlay) setState({bossOcrModalOpen:false, bossOcrNames:[]}); });
+      document.getElementById('btn-boss-ocr-close').onclick = () => setState({bossOcrModalOpen:false, bossOcrNames:[]});
+      document.getElementById('btn-boss-ocr-save').onclick = () => saveBossOcrNames();
     }
   }
 }
