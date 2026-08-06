@@ -306,10 +306,18 @@ async function saveSetting(key, value){
 }
 async function fetchGuildTracker(){
   const v = await fetchSetting('guildTracker');
-  return (v && typeof v === 'object') ? Object.assign({ guildName:'', count:0, keys:[] }, v) : { guildName:'', count:0, keys:[] };
+  return (v && typeof v === 'object') ? { guildName: v.guildName || '' } : { guildName:'' };
 }
 async function saveGuildTracker(tracker){
   await saveSetting('guildTracker', tracker);
+}
+async function fetchKillLogs(){
+  const snap = await getDocs(collection(db, 'killLogs'));
+  return snap.docs.map(d => Object.assign({ id:d.id }, d.data()));
+}
+async function addKillLog(data){
+  const ref = await addDoc(collection(db, 'killLogs'), data);
+  return ref.id;
 }
 
 /* ============ 앱 상태 ============ */
@@ -319,10 +327,12 @@ let state = {
   user:null,
   activeTab:'pvp',
   records:{ pvp:[], storage:[], boss:[] },
+  killLogs:[],
+  rankPeriod:'week',
   modalOpen:false,
   toast:null,
   toastErr:false,
-  guildTracker:{ guildName:'', count:0, keys:[] },
+  guildTracker:{ guildName:'' },
   guildModalOpen:false,
   ocrBusy:false,
   ocrProgress:'',
@@ -395,11 +405,11 @@ async function handleLogin(nickname, pw, remember){
 async function enterApp(user, remember){
   setState({ screen:'loading' });
   try{
-    const [pvp, storageRecs, boss, guildTracker] = await Promise.all([
-      fetchRecords('pvp'), fetchRecords('storage'), fetchRecords('boss'), fetchGuildTracker()
+    const [pvp, storageRecs, boss, guildTracker, killLogs] = await Promise.all([
+      fetchRecords('pvp'), fetchRecords('storage'), fetchRecords('boss'), fetchGuildTracker(), fetchKillLogs()
     ]);
     if(remember){ saveSession(user); } else { clearSession(); }
-    setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, guildTracker, errorMsg:'' });
+    setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, guildTracker, killLogs, errorMsg:'' });
   }catch(e){
     console.error(e);
     setState({ screen:'login', errorMsg:'데이터를 불러오지 못했어요. 다시 로그인해 주세요.' });
@@ -440,10 +450,10 @@ async function saveGuildName(){
   const name = val.trim();
   const errEl = document.getElementById('guild-err');
   try{
-    const newTracker = { guildName:name, count:0, keys:[] };
+    const newTracker = { guildName:name };
     await saveGuildTracker(newTracker);
     setState({ guildTracker:newTracker, guildModalOpen:false });
-    showToast(name ? '상대 길드가 등록됐어요. (카운트 0으로 초기화)' : '상대 길드 등록이 해제됐어요.');
+    showToast(name ? '상대 길드가 등록됐어요.' : '상대 길드 등록이 해제됐어요.');
   }catch(e){
     console.error(e);
     if(errEl) errEl.textContent = '저장에 실패했어요.';
@@ -596,30 +606,38 @@ async function handleFilesSelected(files){
       return;
     }
 
-    const tracker = Object.assign({ guildName:'', count:0, keys:[] }, state.guildTracker);
-    const existingKeys = new Set(tracker.keys || []);
+    const guildName = (state.guildTracker && state.guildTracker.guildName) || '';
+    const myLogs = state.killLogs.filter(l => l.author === state.user.id);
+    const existingKeys = new Set(myLogs.map(l => `${l.date}_${l.time}`));
     let added = 0, dup = 0, unmatched = 0, notKill = 0;
     const unmatchedTokens = [];
+    const toSave = [];
 
     allRows.forEach(r=>{
       if(r.result !== '처치'){ notKill++; return; }
       const key = `${r.date}_${r.time}`;
       if(existingKeys.has(key)){ dup++; return; }
-      if(!fuzzyGuildMatch(r.guildToken, tracker.guildName)){
+      if(!fuzzyGuildMatch(r.guildToken, guildName)){
         unmatched++;
         unmatchedTokens.push(r.guildToken || '(빈값)');
         return;
       }
       existingKeys.add(key);
+      toSave.push({ date:r.date, time:r.time, guildToken:r.guildToken||'', matchedGuild:guildName });
       added++;
     });
 
-    tracker.count = (tracker.count || 0) + added;
-    tracker.keys = Array.from(existingKeys);
+    for(const log of toSave){
+      const rec = Object.assign({ author:state.user.id, authorNick:state.user.nickname, createdAt:Date.now() }, log);
+      try{
+        const id = await addKillLog(rec);
+        state.killLogs = state.killLogs.concat([Object.assign({id}, rec)]);
+      }catch(e){ console.error(e); }
+    }
 
-    await saveGuildTracker(tracker);
-    setState({ ocrBusy:false, ocrProgress:'', guildTracker: tracker });
-    let msg = `${added}건 카운트 추가 (누적 ${tracker.count}회) · 중복 ${dup} · 길드불일치 ${unmatched} · 처치아님 ${notKill}`;
+    setState({ ocrBusy:false, ocrProgress:'' });
+    const myTotal = state.killLogs.filter(l => l.author===state.user.id && (!guildName || l.matchedGuild===guildName)).length;
+    let msg = `${added}건 카운트 추가 (내 누적 ${myTotal}회) · 중복 ${dup} · 길드불일치 ${unmatched} · 처치아님 ${notKill}`;
     if(unmatchedTokens.length){
       msg += `\n인식된 길드 텍스트: ${unmatchedTokens.slice(0,5).join(', ')}`;
     }
@@ -629,6 +647,37 @@ async function handleFilesSelected(files){
     setState({ ocrBusy:false, ocrProgress:'' });
     showToast('이미지 인식에 실패했어요.', true);
   }
+}
+
+function getWeekRange(){
+  const now = new Date();
+  const dow = (now.getDay()+6)%7; // 월=0 ... 일=6
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate()-dow);
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+6);
+  return { start:monday, end:sunday };
+}
+function getMonthRange(){
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth()+1, 0);
+  return { start, end };
+}
+function inRange(dateStr, range){
+  const d = new Date(dateStr+'T00:00:00');
+  const endOfDay = new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate(), 23,59,59);
+  return d >= range.start && d <= endOfDay;
+}
+function computeRanking(period){
+  const guildName = (state.guildTracker && state.guildTracker.guildName) || '';
+  const range = period==='month' ? getMonthRange() : getWeekRange();
+  const totals = {};
+  (state.killLogs||[]).forEach(l=>{
+    if(guildName && l.matchedGuild !== guildName) return;
+    if(!inRange(l.date, range)) return;
+    if(!totals[l.author]) totals[l.author] = { nick:l.authorNick || l.author, count:0 };
+    totals[l.author].count++;
+  });
+  return Object.values(totals).sort((a,b)=>b.count-a.count);
 }
 
 /* ============ 화면 렌더 ============ */
@@ -768,13 +817,35 @@ const DESCS = {
 };
 
 function renderPvpControls(){
-  const tracker = state.guildTracker || { guildName:'', count:0 };
+  const guildName = (state.guildTracker && state.guildTracker.guildName) || '';
+  const myCount = (state.killLogs||[]).filter(l => l.author===state.user.id && (!guildName || l.matchedGuild===guildName)).length;
+  const period = state.rankPeriod || 'week';
+  const ranking = computeRanking(period);
+
   return `
   <div style="display:flex; gap:8px; margin-bottom:10px;">
-    <button class="logout-btn" id="btn-set-guild" style="flex:1;">🎯 상대 길드: ${tracker.guildName?esc(tracker.guildName):'미등록'}</button>
-    <button class="logout-btn" id="btn-ocr-upload" style="flex:1;">📷 스크린샷으로 카운트</button>
+    <button class="logout-btn" id="btn-set-guild" style="flex:1;">🎯 상대 길드: ${guildName?esc(guildName):'미등록'}</button>
+    <button class="logout-btn" id="btn-ocr-upload" style="flex:1;">📷 내 처치 스크린샷 등록</button>
   </div>
-  ${tracker.guildName ? `<div class="section-desc" style="margin-top:-6px;">등록된 <b style="color:var(--gold-bright);">${esc(tracker.guildName)}</b> 길드 상대 처치 횟수: <b style="color:var(--success); font-size:15px;">${tracker.count||0}회</b></div>` : ''}
+  ${guildName ? `<div class="section-desc" style="margin-top:-6px;">내 누적 처치: <b style="color:var(--success); font-size:15px;">${myCount}회</b></div>` : ''}
+
+  <div style="display:flex; gap:8px; margin:14px 0 8px;">
+    <button class="tab-btn ${period==='week'?'active':''}" data-rank="week" style="border-radius:8px;">주간 랭킹</button>
+    <button class="tab-btn ${period==='month'?'active':''}" data-rank="month" style="border-radius:8px;">월간 랭킹</button>
+  </div>
+  <div style="margin-bottom:16px;">
+    ${ranking.length===0 ? `<div class="record-meta" style="padding:10px 2px;">아직 이 기간에 집계된 처치 기록이 없어요.</div>` :
+      ranking.map((r,i)=>`
+        <div class="record-card" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin-bottom:6px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="color:${i===0?'var(--gold-bright)':'var(--text-muted)'}; font-weight:700; width:18px;">${i+1}</span>
+            <span style="${r.nick===state.user.nickname?'color:var(--gold-bright); font-weight:700;':''}">${esc(r.nick)}</span>
+          </div>
+          <span style="color:var(--success); font-weight:700;">${r.count}회</span>
+        </div>
+      `).join('')
+    }
+  </div>
   <input type="file" id="ocr-file-input" accept="image/*" multiple style="display:none;">
   `;
 }
@@ -957,8 +1028,11 @@ function attachHandlers(){
 
   if(state.screen==='app'){
     $('#btn-logout').onclick = handleLogout;
-    document.querySelectorAll('.tab-btn').forEach(btn=>{
+    document.querySelectorAll('.tab-btn[data-tab]').forEach(btn=>{
       btn.onclick = () => setState({ activeTab: btn.getAttribute('data-tab'), modalOpen:false });
+    });
+    document.querySelectorAll('.tab-btn[data-rank]').forEach(btn=>{
+      btn.onclick = () => setState({ rankPeriod: btn.getAttribute('data-rank') });
     });
     const addBtn = document.getElementById('btn-add');
     if(addBtn) addBtn.onclick = () => setState({ modalOpen:true });
