@@ -537,7 +537,9 @@ function parsePvpOcrText(text){
   }
   for(let i=0;i<anchors.length;i++){
     const start = anchors[i].index + anchors[i].len;
-    const end = i+1 < anchors.length ? anchors[i+1].index : text.length;
+    const nextAnchorIdx = i+1 < anchors.length ? anchors[i+1].index : text.length;
+    const cappedEnd = Math.min(start + 60, text.length); // 날짜 뒤 일정 길이까지만 (엉뚱한 뒷부분 텍스트 유입 방지)
+    const end = Math.min(nextAnchorIdx, cappedEnd);
     let chunk = text.slice(start, end).replace(/\n/g,' ').trim();
 
     let result = null;
