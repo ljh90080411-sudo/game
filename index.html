@@ -318,7 +318,7 @@ async function fetchGuildTracker(){
       return migrated;
     }
   }
-  const def = { guildNames:['플레이어'] };
+  const def = { guildNames:['플레이어', '흑우들'] };
   await saveGuildTracker(def);
   return def;
 }
@@ -346,7 +346,7 @@ let state = {
   modalOpen:false,
   toast:null,
   toastErr:false,
-  guildTracker:{ guildNames:['플레이어'] },
+  guildTracker:{ guildNames:['플레이어', '흑우들'] },
   guildModalOpen:false,
   ocrBusy:false,
   ocrProgress:'',
@@ -922,7 +922,7 @@ function renderGuildModal(){
         <span>상대 길드 관리</span>
         <button class="modal-close" id="btn-guild-close">✕</button>
       </div>
-      <div class="record-meta" style="margin-bottom:12px;">스크린샷에서 인식된 길드 텍스트가 아래 목록 중 하나와 비슷하면 처치로 카운트돼요. '플레이어'는 기본으로 등록돼 있어요.</div>
+      <div class="record-meta" style="margin-bottom:12px;">스크린샷에서 인식된 길드 텍스트가 아래 목록 중 하나와 비슷하면 처치로 카운트돼요. '플레이어', '흑우들'은 기본으로 등록돼 있어요.</div>
       <div class="chip-row" style="margin-bottom:16px;">
         ${names.length===0 ? `<span class="record-meta">등록된 길드가 없어요.</span>` :
           names.map(n=>`
