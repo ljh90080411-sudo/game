@@ -530,6 +530,27 @@ function loadImageFromFile(file){
   });
 }
 
+async function preprocessForNicknameOcr(file){
+  const img = await loadImageFromFile(file);
+  const scale = 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = imageData.data;
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i], g=d[i+1], b=d[i+2];
+    const isRed = r > 140 && (r-g) > 40 && (r-b) > 40;
+    const isBlue = b > 140 && (b-r) > 30 && (b-g) > 10;
+    const val = (isRed || isBlue) ? 0 : 255; // 빨강/파랑 글자만 검정으로 남기고 나머지는 흰 배경으로 지움
+    d[i]=d[i+1]=d[i+2]=val;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
 async function preprocessForOcr(file){
   const img = await loadImageFromFile(file);
   const scale = 2;
@@ -702,15 +723,19 @@ async function handleFilesSelected(files){
 
 /* ============ 보스타임 참가자 인식 ============ */
 function extractNameCandidates(text){
-  const raw = (text||'').split(/[\n,]+/).map(s=>cleanToken(s)).filter(Boolean);
+  const lines = (text||'').split(/\n/);
   const seen = new Set();
   const names = [];
-  raw.forEach(tok=>{
-    if(tok.length < 2 || tok.length > 14) return;
-    if(/^[0-9]+$/.test(tok)) return;
-    if(seen.has(tok)) return;
-    seen.add(tok);
-    names.push(tok);
+  const junkLine = /(PM|AM|AN|오전|오후)\s*\d{1,2}[:.]\d{2}|획득했습니다|경험치|나인을|드롭했습니다|입력하세요/;
+  lines.forEach(line=>{
+    if(junkLine.test(line)) return; // 전투 로그(획득/시간 붙은 줄)는 통째로 제외
+    line.split(/[,\s]+/).map(cleanToken).filter(Boolean).forEach(tok=>{
+      if(tok.length < 2 || tok.length > 14) return;
+      if(/^[0-9]+$/.test(tok)) return;
+      if(seen.has(tok)) return;
+      seen.add(tok);
+      names.push(tok);
+    });
   });
   return names;
 }
@@ -727,7 +752,7 @@ async function handleBossFilesSelected(files){
     let debugImage = '';
     for(const file of files){
       setState({ ocrBusy:true, ocrProgress:`이미지 처리 중 (${file.name})` });
-      const canvas = await preprocessForOcr(file);
+      const canvas = await preprocessForNicknameOcr(file);
       if(!debugImage){ try{ debugImage = canvas.toDataURL('image/png'); }catch(e){} }
       setState({ ocrBusy:true, ocrProgress:`이미지 인식 중 (${file.name})` });
       const { data } = await window.Tesseract.recognize(canvas, 'kor+eng', {
