@@ -317,46 +317,66 @@ function showToast(msg, isErr){
   setTimeout(()=>setState({toast:null}), 2200);
 }
 
+function loadSession(){
+  try{
+    const raw = localStorage.getItem('solEnchantSession');
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function saveSession(user){
+  try{ localStorage.setItem('solEnchantSession', JSON.stringify(user)); }catch(e){}
+}
+function clearSession(){
+  try{ localStorage.removeItem('solEnchantSession'); }catch(e){}
+}
+
 async function init(){
-  setState({ screen:'login' });
+  const saved = loadSession();
+  if(saved && saved.id){
+    await enterApp(saved, true);
+  }else{
+    setState({ screen:'login' });
+  }
 }
 
 /* ============ 인증 ============ */
-async function handleSignup(id, pw, nickname){
-  id = (id||'').trim(); nickname = (nickname||'').trim();
-  if(!id || !pw || !nickname){ setState({errorMsg:'모든 항목을 입력해 주세요.'}); return; }
-  if(pw.length < 4){ setState({errorMsg:'비밀번호는 4자 이상이어야 해요.'}); return; }
+async function handleSignup(nickname, pw, remember){
+  nickname = (nickname||'').trim();
+  if(!nickname || !pw){ setState({errorMsg:'닉네임과 비밀번호를 입력해 주세요.'}); return; }
+  if(nickname.includes('/')){ setState({errorMsg:"닉네임에 '/' 문자는 쓸 수 없어요."}); return; }
+  if(pw.length < 6 || pw.length > 10){ setState({errorMsg:'비밀번호는 6~10자여야 해요.'}); return; }
   try{
-    const existing = await fetchUser(id);
-    if(existing){ setState({errorMsg:'이미 사용 중인 아이디예요.'}); return; }
+    const existing = await fetchUser(nickname);
+    if(existing){ setState({errorMsg:'이미 사용 중인 닉네임이에요.'}); return; }
     const hash = await sha256(pw);
-    await createUser(id, { password:hash, nickname, createdAt:Date.now() });
-    await enterApp({ id, nickname });
+    await createUser(nickname, { password:hash, nickname, createdAt:Date.now() });
+    await enterApp({ id:nickname, nickname }, remember);
   }catch(e){
     console.error(e);
     setState({errorMsg:'서버 연결에 실패했어요. 잠시 후 다시 시도해 주세요.'});
   }
 }
-async function handleLogin(id, pw){
-  id = (id||'').trim();
-  if(!id || !pw){ setState({errorMsg:'아이디와 비밀번호를 입력해 주세요.'}); return; }
+async function handleLogin(nickname, pw, remember){
+  nickname = (nickname||'').trim();
+  if(!nickname || !pw){ setState({errorMsg:'닉네임과 비밀번호를 입력해 주세요.'}); return; }
   try{
-    const u = await fetchUser(id);
-    if(!u){ setState({errorMsg:'존재하지 않는 아이디예요.'}); return; }
+    const u = await fetchUser(nickname);
+    if(!u){ setState({errorMsg:'존재하지 않는 닉네임이에요.'}); return; }
     const hash = await sha256(pw);
     if(hash !== u.password){ setState({errorMsg:'비밀번호가 일치하지 않아요.'}); return; }
-    await enterApp({ id, nickname:u.nickname });
+    await enterApp({ id:nickname, nickname:u.nickname }, remember);
   }catch(e){
     console.error(e);
     setState({errorMsg:'서버 연결에 실패했어요. 잠시 후 다시 시도해 주세요.'});
   }
 }
-async function enterApp(user){
+async function enterApp(user, remember){
   setState({ screen:'loading' });
   try{
     const [pvp, storageRecs, boss] = await Promise.all([
       fetchRecords('pvp'), fetchRecords('storage'), fetchRecords('boss')
     ]);
+    if(remember){ saveSession(user); } else { clearSession(); }
     setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, errorMsg:'' });
   }catch(e){
     console.error(e);
@@ -364,6 +384,7 @@ async function enterApp(user){
   }
 }
 function handleLogout(){
+  clearSession();
   setState({ screen:'login', user:null, errorMsg:'', activeTab:'pvp' });
 }
 
@@ -411,19 +432,17 @@ function renderLogin(mode){
       <div class="login-title brand-kr">솔 인첸트</div>
       <div class="login-sub brand-en">Sol Enchant · Guild Log</div>
 
-      ${isSignup ? `
       <div class="field">
-        <label>길드원 이름 (닉네임)</label>
-        <input id="in-nick" type="text" placeholder="게임 내 닉네임" maxlength="16">
-      </div>` : ``}
-
-      <div class="field">
-        <label>아이디</label>
-        <input id="in-id" type="text" placeholder="아이디" autocomplete="username" maxlength="20">
+        <label>닉네임</label>
+        <input id="in-id" type="text" placeholder="게임 내 닉네임" autocomplete="username" maxlength="20">
       </div>
       <div class="field">
         <label>비밀번호</label>
-        <input id="in-pw" type="password" placeholder="비밀번호 (4자 이상)" autocomplete="${isSignup?'new-password':'current-password'}">
+        <input id="in-pw" type="password" placeholder="비밀번호 (6~10자)" autocomplete="${isSignup?'new-password':'current-password'}">
+      </div>
+      <div class="field" style="display:flex; align-items:center; gap:8px;">
+        <input id="in-remember" type="checkbox" style="width:auto;" checked>
+        <label for="in-remember" style="margin:0; font-size:12.5px;">로그아웃 전까지 자동 로그인</label>
       </div>
       <div class="err-msg">${esc(state.errorMsg)}</div>
 
@@ -643,11 +662,11 @@ function attachHandlers(){
     const submit = () => {
       const id = $('#in-id').value;
       const pw = $('#in-pw').value;
+      const remember = $('#in-remember') ? $('#in-remember').checked : true;
       if(state.screen==='signup'){
-        const nick = $('#in-nick').value;
-        handleSignup(id, pw, nick);
+        handleSignup(id, pw, remember);
       }else{
-        handleLogin(id, pw);
+        handleLogin(id, pw, remember);
       }
     };
     $('#btn-submit').onclick = submit;
