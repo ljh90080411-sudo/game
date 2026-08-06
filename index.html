@@ -305,8 +305,22 @@ async function saveSetting(key, value){
   await setDoc(doc(db, 'settings', key), { value, updatedAt:Date.now() });
 }
 async function fetchGuildTracker(){
-  const v = await fetchSetting('guildTracker');
-  return (v && typeof v === 'object') ? { guildName: v.guildName || '' } : { guildName:'' };
+  const ref = doc(db, 'settings', 'guildTracker');
+  const snap = await getDoc(ref);
+  if(snap.exists()){
+    const v = snap.data().value;
+    if(v && Array.isArray(v.guildNames)){
+      return { guildNames: v.guildNames };
+    }
+    if(v && typeof v.guildName === 'string'){
+      const migrated = { guildNames: v.guildName ? [v.guildName] : ['플레이어'] };
+      await saveGuildTracker(migrated);
+      return migrated;
+    }
+  }
+  const def = { guildNames:['플레이어'] };
+  await saveGuildTracker(def);
+  return def;
 }
 async function saveGuildTracker(tracker){
   await saveSetting('guildTracker', tracker);
@@ -332,7 +346,7 @@ let state = {
   modalOpen:false,
   toast:null,
   toastErr:false,
-  guildTracker:{ guildName:'' },
+  guildTracker:{ guildNames:['플레이어'] },
   guildModalOpen:false,
   ocrBusy:false,
   ocrProgress:'',
@@ -445,18 +459,32 @@ async function deleteRecord(type, id){
 }
 
 /* ============ 상대 길드 등록 ============ */
-async function saveGuildName(){
-  const val = (document.getElementById('f-guild-name')||{}).value || '';
-  const name = val.trim();
+async function addGuildName(){
+  const input = document.getElementById('f-guild-name-new');
+  const name = ((input && input.value) || '').trim();
   const errEl = document.getElementById('guild-err');
+  if(!name){ if(errEl) errEl.textContent = '길드 이름을 입력해 주세요.'; return; }
+  const current = (state.guildTracker && state.guildTracker.guildNames) || [];
+  if(current.includes(name)){ if(errEl) errEl.textContent = '이미 등록된 길드예요.'; return; }
+  const updated = { guildNames: current.concat([name]) };
   try{
-    const newTracker = { guildName:name };
-    await saveGuildTracker(newTracker);
-    setState({ guildTracker:newTracker, guildModalOpen:false });
-    showToast(name ? '상대 길드가 등록됐어요.' : '상대 길드 등록이 해제됐어요.');
+    await saveGuildTracker(updated);
+    setState({ guildTracker: updated });
+    showToast(`'${name}' 길드가 추가됐어요.`);
   }catch(e){
     console.error(e);
     if(errEl) errEl.textContent = '저장에 실패했어요.';
+  }
+}
+async function removeGuildName(name){
+  const current = (state.guildTracker && state.guildTracker.guildNames) || [];
+  const updated = { guildNames: current.filter(n => n !== name) };
+  try{
+    await saveGuildTracker(updated);
+    setState({ guildTracker: updated });
+  }catch(e){
+    console.error(e);
+    showToast('삭제에 실패했어요.', true);
   }
 }
 
@@ -527,6 +555,10 @@ function fuzzyGuildMatch(token, target){
   const dist = levenshtein(token, target);
   const maxLen = Math.max(token.length, target.length);
   return maxLen > 0 && (dist / maxLen) <= 0.34;
+}
+function findMatchedGuild(token, names){
+  if(!names || names.length === 0) return '';
+  return names.find(n => fuzzyGuildMatch(token, n)) || '';
 }
 
 function cleanToken(s){
@@ -606,7 +638,7 @@ async function handleFilesSelected(files){
       return;
     }
 
-    const guildName = (state.guildTracker && state.guildTracker.guildName) || '';
+    const guildNames = (state.guildTracker && state.guildTracker.guildNames) || [];
     const myLogs = state.killLogs.filter(l => l.author === state.user.id);
     const existingKeys = new Set(myLogs.map(l => `${l.date}_${l.time}`));
     let added = 0, dup = 0, unmatched = 0, notKill = 0;
@@ -617,13 +649,14 @@ async function handleFilesSelected(files){
       if(r.result !== '처치'){ notKill++; return; }
       const key = `${r.date}_${r.time}`;
       if(existingKeys.has(key)){ dup++; return; }
-      if(!fuzzyGuildMatch(r.guildToken, guildName)){
+      const matchedName = findMatchedGuild(r.guildToken, guildNames);
+      if(guildNames.length && !matchedName){
         unmatched++;
         unmatchedTokens.push(r.guildToken || '(빈값)');
         return;
       }
       existingKeys.add(key);
-      toSave.push({ date:r.date, time:r.time, guildToken:r.guildToken||'', matchedGuild:guildName });
+      toSave.push({ date:r.date, time:r.time, guildToken:r.guildToken||'', matchedGuild: matchedName || (guildNames[0]||'') });
       added++;
     });
 
@@ -636,7 +669,7 @@ async function handleFilesSelected(files){
     }
 
     setState({ ocrBusy:false, ocrProgress:'' });
-    const myTotal = state.killLogs.filter(l => l.author===state.user.id && (!guildName || l.matchedGuild===guildName)).length;
+    const myTotal = state.killLogs.filter(l => l.author===state.user.id && (!guildNames.length || guildNames.includes(l.matchedGuild))).length;
     let msg = `${added}건 카운트 추가 (내 누적 ${myTotal}회) · 중복 ${dup} · 길드불일치 ${unmatched} · 처치아님 ${notKill}`;
     if(unmatchedTokens.length){
       msg += `\n인식된 길드 텍스트: ${unmatchedTokens.slice(0,5).join(', ')}`;
@@ -668,11 +701,11 @@ function inRange(dateStr, range){
   return d >= range.start && d <= endOfDay;
 }
 function computeRanking(period){
-  const guildName = (state.guildTracker && state.guildTracker.guildName) || '';
+  const guildNames = (state.guildTracker && state.guildTracker.guildNames) || [];
   const range = period==='month' ? getMonthRange() : getWeekRange();
   const totals = {};
   (state.killLogs||[]).forEach(l=>{
-    if(guildName && l.matchedGuild !== guildName) return;
+    if(guildNames.length && !guildNames.includes(l.matchedGuild)) return;
     if(!inRange(l.date, range)) return;
     if(!totals[l.author]) totals[l.author] = { nick:l.authorNick || l.author, count:0 };
     totals[l.author].count++;
@@ -817,17 +850,18 @@ const DESCS = {
 };
 
 function renderPvpControls(){
-  const guildName = (state.guildTracker && state.guildTracker.guildName) || '';
-  const myCount = (state.killLogs||[]).filter(l => l.author===state.user.id && (!guildName || l.matchedGuild===guildName)).length;
+  const guildNames = (state.guildTracker && state.guildTracker.guildNames) || [];
+  const namesLabel = guildNames.length ? guildNames.join(', ') : '미등록';
+  const myCount = (state.killLogs||[]).filter(l => l.author===state.user.id && (!guildNames.length || guildNames.includes(l.matchedGuild))).length;
   const period = state.rankPeriod || 'week';
   const ranking = computeRanking(period);
 
   return `
   <div style="display:flex; gap:8px; margin-bottom:10px;">
-    <button class="logout-btn" id="btn-set-guild" style="flex:1;">🎯 상대 길드: ${guildName?esc(guildName):'미등록'}</button>
+    <button class="logout-btn" id="btn-set-guild" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">🎯 상대 길드: ${esc(namesLabel)}</button>
     <button class="logout-btn" id="btn-ocr-upload" style="flex:1;">📷 내 처치 스크린샷 등록</button>
   </div>
-  ${guildName ? `<div class="section-desc" style="margin-top:-6px;">내 누적 처치: <b style="color:var(--success); font-size:15px;">${myCount}회</b></div>` : ''}
+  ${guildNames.length ? `<div class="section-desc" style="margin-top:-6px;">내 누적 처치: <b style="color:var(--success); font-size:15px;">${myCount}회</b></div>` : ''}
 
   <div style="display:flex; gap:8px; margin:14px 0 8px;">
     <button class="tab-btn ${period==='week'?'active':''}" data-rank="week" style="border-radius:8px;">주간 랭킹</button>
@@ -880,17 +914,28 @@ function renderContent(){
 
 function renderGuildModal(){
   if(!state.guildModalOpen) return '';
+  const names = (state.guildTracker && state.guildTracker.guildNames) || [];
   return `
   <div class="modal-overlay" id="guild-modal-overlay">
     <div class="modal-card">
       <div class="modal-title">
-        <span>상대 길드 등록</span>
+        <span>상대 길드 관리</span>
         <button class="modal-close" id="btn-guild-close">✕</button>
       </div>
-      <div class="record-meta" style="margin-bottom:12px;">스크린샷에서 인식된 길드 텍스트와 여기 등록한 이름이 비슷하면 자동으로 처치 횟수에 더해져요. 이름을 바꾸면 카운트가 0부터 다시 시작돼요.</div>
-      <div class="field"><label>추적할 상대 길드 이름</label><input id="f-guild-name" type="text" placeholder="예: 플레이어" value="${esc((state.guildTracker&&state.guildTracker.guildName)||'')}"></div>
+      <div class="record-meta" style="margin-bottom:12px;">스크린샷에서 인식된 길드 텍스트가 아래 목록 중 하나와 비슷하면 처치로 카운트돼요. '플레이어'는 기본으로 등록돼 있어요.</div>
+      <div class="chip-row" style="margin-bottom:16px;">
+        ${names.length===0 ? `<span class="record-meta">등록된 길드가 없어요.</span>` :
+          names.map(n=>`
+            <span class="chip" style="display:flex; align-items:center; gap:6px; padding:5px 6px 5px 12px;">
+              ${esc(n)}
+              <button data-remove-guild="${esc(n)}" style="background:none; border:none; color:var(--violet); font-size:14px; padding:0 4px; cursor:pointer;">✕</button>
+            </span>
+          `).join('')
+        }
+      </div>
+      <div class="field"><label>새 길드 추가</label><input id="f-guild-name-new" type="text" placeholder="예: 붉은매화"></div>
       <div class="err-msg" id="guild-err"></div>
-      <button class="btn-primary" id="btn-guild-save">저장하기</button>
+      <button class="btn-primary" id="btn-guild-add">길드 추가하기</button>
     </div>
   </div>`;
 }
@@ -1070,7 +1115,12 @@ function attachHandlers(){
     if(guildOverlay){
       guildOverlay.addEventListener('click', e=>{ if(e.target===guildOverlay) setState({guildModalOpen:false}); });
       document.getElementById('btn-guild-close').onclick = () => setState({guildModalOpen:false});
-      document.getElementById('btn-guild-save').onclick = () => saveGuildName();
+      document.getElementById('btn-guild-add').onclick = () => addGuildName();
+      const newGuildInput = document.getElementById('f-guild-name-new');
+      if(newGuildInput) newGuildInput.addEventListener('keydown', e=>{ if(e.key==='Enter') addGuildName(); });
+      document.querySelectorAll('[data-remove-guild]').forEach(btn=>{
+        btn.onclick = () => removeGuildName(btn.getAttribute('data-remove-guild'));
+      });
     }
 
     const ocrDebugOverlay = document.getElementById('ocr-debug-overlay');
