@@ -296,6 +296,13 @@ async function createRecord(type, data){
 async function removeRecord(type, id){
   await deleteDoc(doc(db, COLLECTIONS[type], id));
 }
+async function fetchSetting(key){
+  const snap = await getDoc(doc(db, 'settings', key));
+  return snap.exists() ? (snap.data().value || '') : '';
+}
+async function saveSetting(key, value){
+  await setDoc(doc(db, 'settings', key), { value, updatedAt:Date.now() });
+}
 
 /* ============ 앱 상태 ============ */
 let state = {
@@ -307,6 +314,12 @@ let state = {
   modalOpen:false,
   toast:null,
   toastErr:false,
+  targetGuild:'',
+  guildModalOpen:false,
+  ocrModalOpen:false,
+  ocrRows:[],
+  ocrBusy:false,
+  ocrProgress:'',
 };
 function setState(patch){
   state = Object.assign({}, state, patch);
@@ -373,11 +386,11 @@ async function handleLogin(nickname, pw, remember){
 async function enterApp(user, remember){
   setState({ screen:'loading' });
   try{
-    const [pvp, storageRecs, boss] = await Promise.all([
-      fetchRecords('pvp'), fetchRecords('storage'), fetchRecords('boss')
+    const [pvp, storageRecs, boss, targetGuild] = await Promise.all([
+      fetchRecords('pvp'), fetchRecords('storage'), fetchRecords('boss'), fetchSetting('targetGuild')
     ]);
     if(remember){ saveSession(user); } else { clearSession(); }
-    setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, errorMsg:'' });
+    setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, targetGuild, errorMsg:'' });
   }catch(e){
     console.error(e);
     setState({ screen:'login', errorMsg:'데이터를 불러오지 못했어요. 다시 로그인해 주세요.' });
@@ -410,6 +423,149 @@ async function deleteRecord(type, id){
     console.error(e);
     showToast('삭제에 실패했어요. 다시 시도해 주세요.', true);
   }
+}
+
+/* ============ 상대 길드 등록 ============ */
+async function saveGuildName(){
+  const val = (document.getElementById('f-guild-name')||{}).value || '';
+  const name = val.trim();
+  const errEl = document.getElementById('guild-err');
+  try{
+    await saveSetting('targetGuild', name);
+    setState({ targetGuild:name, guildModalOpen:false });
+    showToast(name ? '상대 길드가 등록됐어요.' : '상대 길드 등록이 해제됐어요.');
+  }catch(e){
+    console.error(e);
+    if(errEl) errEl.textContent = '저장에 실패했어요.';
+  }
+}
+
+/* ============ 스크린샷 OCR ============ */
+let tesseractLoadPromise = null;
+function loadTesseract(){
+  if(window.Tesseract) return Promise.resolve();
+  if(tesseractLoadPromise) return tesseractLoadPromise;
+  tesseractLoadPromise = new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('tesseract load failed'));
+    document.head.appendChild(s);
+  });
+  return tesseractLoadPromise;
+}
+
+function parsePvpOcrText(text){
+  const rows = [];
+  const anchorRe = /(\d{4}\/\d{2}\/\d{2})\s+(\d{2}:\d{2})/g;
+  const anchors = [];
+  let m;
+  while((m = anchorRe.exec(text))){
+    anchors.push({ index:m.index, date:m[1], time:m[2], len:m[0].length });
+  }
+  for(let i=0;i<anchors.length;i++){
+    const start = anchors[i].index + anchors[i].len;
+    const end = i+1 < anchors.length ? anchors[i+1].index : text.length;
+    let chunk = text.slice(start, end).replace(/\n/g,' ').trim();
+
+    let result = null;
+    if(/처치/.test(chunk)) result = '처치';
+    else if(/도움/.test(chunk)) result = '도움';
+    else if(/사망/.test(chunk)) result = '사망';
+    if(result) chunk = chunk.replace(result, '').trim();
+
+    let tokens = chunk.split(/\s+/).filter(Boolean);
+    let loot = '';
+    if(tokens.length && /^[\d,]+$/.test(tokens[tokens.length-1])){
+      loot = tokens.pop();
+    }
+    let guildToken = '';
+    if(tokens.length >= 2){
+      guildToken = tokens.pop();
+    }
+    const opponent = tokens.join(' ').trim();
+    if(!opponent) continue;
+
+    rows.push({ date:anchors[i].date, time:anchors[i].time, result: result||'처치', opponent, guildToken, loot });
+  }
+  return rows;
+}
+
+async function handleFilesSelected(files){
+  if(!files || !files.length) return;
+  setState({ ocrBusy:true, ocrProgress:'준비 중...' });
+  try{
+    await loadTesseract();
+    let allRows = [];
+    for(const file of files){
+      setState({ ocrBusy:true, ocrProgress:`이미지 인식 중 (${file.name})` });
+      const { data } = await window.Tesseract.recognize(file, 'kor+eng', {
+        logger: m => {
+          if(m.status === 'recognizing text'){
+            setState({ ocrBusy:true, ocrProgress:`인식 중... ${Math.round((m.progress||0)*100)}%` });
+          }
+        }
+      });
+      allRows = allRows.concat(parsePvpOcrText(data.text || ''));
+    }
+
+    const seen = new Set();
+    const finalRows = [];
+    allRows.forEach(r=>{
+      const key = `${r.date}_${r.time}_${r.opponent}`;
+      if(seen.has(key)) return;
+      seen.add(key);
+      const already = state.records.pvp.some(rec => rec.dedupeKey === key);
+      const matched = !state.targetGuild || (r.guildToken||'').includes(state.targetGuild);
+      finalRows.push(Object.assign({}, r, { key, already, matched, include: r.result==='처치' && !already }));
+    });
+
+    if(finalRows.length === 0){
+      setState({ ocrBusy:false, ocrProgress:'' });
+      showToast('스크린샷에서 기록을 인식하지 못했어요.', true);
+      return;
+    }
+    setState({ ocrBusy:false, ocrProgress:'', ocrModalOpen:true, ocrRows:finalRows });
+  }catch(e){
+    console.error(e);
+    setState({ ocrBusy:false, ocrProgress:'' });
+    showToast('이미지 인식에 실패했어요.', true);
+  }
+}
+
+async function addRecordRaw(type, data){
+  const rec = Object.assign({ author:state.user.id, authorNick:state.user.nickname, createdAt:Date.now() }, data);
+  const id = await createRecord(type, rec);
+  state.records[type] = state.records[type].concat([Object.assign({id}, rec)]);
+}
+
+async function saveOcrRows(){
+  const rows = state.ocrRows || [];
+  let added = 0, skipped = 0;
+  for(let i=0;i<rows.length;i++){
+    const includeEl = document.getElementById(`ocr-include-${i}`);
+    if(!includeEl || !includeEl.checked){ skipped++; continue; }
+    const opponentEl = document.getElementById(`ocr-opponent-${i}`);
+    const resultEl = document.getElementById(`ocr-result-${i}`);
+    const opponent = (opponentEl && opponentEl.value.trim()) || rows[i].opponent;
+    const result = (resultEl && resultEl.value) || rows[i].result;
+    const key = `${rows[i].date}_${rows[i].time}_${opponent}`;
+    if(state.records.pvp.some(rec => rec.dedupeKey === key)){ skipped++; continue; }
+    try{
+      await addRecordRaw('pvp', {
+        date: rows[i].date, opponent, result, score:null,
+        memo: `스크린샷 자동 기록${rows[i].guildToken ? (' · 인식된 길드: '+rows[i].guildToken) : ''}`,
+        guildToken: rows[i].guildToken || '',
+        dedupeKey: key, source:'screenshot'
+      });
+      added++;
+    }catch(e){
+      console.error(e);
+      skipped++;
+    }
+  }
+  setState({ ocrModalOpen:false, ocrRows:[] });
+  showToast(`${added}건 저장됨 · 제외/중복 ${skipped}건`);
 }
 
 /* ============ 화면 렌더 ============ */
@@ -548,6 +704,21 @@ const DESCS = {
   boss:'보스타임 참여 인원과 시간을 기록해요.'
 };
 
+function renderPvpControls(){
+  const targetGuild = state.targetGuild;
+  const killTally = state.records.pvp.filter(r =>
+    r.source==='screenshot' && r.result==='처치' && targetGuild && (r.guildToken||'').includes(targetGuild)
+  ).length;
+  return `
+  <div style="display:flex; gap:8px; margin-bottom:10px;">
+    <button class="logout-btn" id="btn-set-guild" style="flex:1;">🎯 상대 길드: ${targetGuild?esc(targetGuild):'미등록'}</button>
+    <button class="logout-btn" id="btn-ocr-upload" style="flex:1;">📷 스크린샷으로 추가</button>
+  </div>
+  ${targetGuild ? `<div class="section-desc" style="margin-top:-6px;">등록된 <b style="color:var(--gold-bright);">${esc(targetGuild)}</b> 길드 상대 처치(스크린샷 기준): <b style="color:var(--success);">${killTally}회</b></div>` : ''}
+  <input type="file" id="ocr-file-input" accept="image/*" multiple style="display:none;">
+  `;
+}
+
 function renderContent(){
   const type = state.activeTab;
   const list = state.records[type] || [];
@@ -569,10 +740,77 @@ function renderContent(){
 
   return `
   <div class="content">
+    ${type==='pvp' ? renderPvpControls() : ''}
     <div class="section-desc">${DESCS[type]}</div>
     ${body}
   </div>
   <button class="fab" id="btn-add">+</button>`;
+}
+
+function renderGuildModal(){
+  if(!state.guildModalOpen) return '';
+  return `
+  <div class="modal-overlay" id="guild-modal-overlay">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>상대 길드 등록</span>
+        <button class="modal-close" id="btn-guild-close">✕</button>
+      </div>
+      <div class="record-meta" style="margin-bottom:12px;">여기 등록한 길드 이름과 스크린샷에서 인식된 길드 텍스트가 일치하는 처치 기록만 집계돼요.</div>
+      <div class="field"><label>추적할 상대 길드 이름</label><input id="f-guild-name" type="text" placeholder="예: 붉은매화" value="${esc(state.targetGuild||'')}"></div>
+      <div class="err-msg" id="guild-err"></div>
+      <button class="btn-primary" id="btn-guild-save">저장하기</button>
+    </div>
+  </div>`;
+}
+
+function renderOcrModal(){
+  if(!state.ocrModalOpen) return '';
+  const rows = state.ocrRows || [];
+  return `
+  <div class="modal-overlay" id="ocr-modal-overlay">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>인식된 PVP 기록 확인</span>
+        <button class="modal-close" id="btn-ocr-close">✕</button>
+      </div>
+      <div class="record-meta" style="margin-bottom:12px;">인식 결과가 정확하지 않을 수 있어요. 이름을 확인하고, 저장할 기록만 체크한 뒤 저장해주세요. 이미 저장된 기록은 자동으로 제외돼요.</div>
+      ${rows.map((r,i)=>`
+        <div class="record-card" style="margin-bottom:8px;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+            <input type="checkbox" id="ocr-include-${i}" style="width:auto;" ${r.include?'checked':''} ${r.already?'disabled':''}>
+            <label for="ocr-include-${i}" style="margin:0; font-size:12px; color:var(--text-muted);">
+              ${esc(r.date)} ${esc(r.time)}${r.already?' · <span style="color:var(--danger);">이미 저장됨</span>':''}${r.matched && state.targetGuild ?' · <span style="color:var(--success);">길드 일치</span>':''}
+            </label>
+          </div>
+          <div class="field-row">
+            <div class="field" style="margin-bottom:0;"><input id="ocr-opponent-${i}" type="text" value="${esc(r.opponent)}"></div>
+            <div class="field" style="margin-bottom:0; max-width:92px;">
+              <select id="ocr-result-${i}">
+                <option value="처치" ${r.result==='처치'?'selected':''}>처치</option>
+                <option value="도움" ${r.result==='도움'?'selected':''}>도움</option>
+                <option value="사망" ${r.result==='사망'?'selected':''}>사망</option>
+              </select>
+            </div>
+          </div>
+          <div class="record-meta" style="margin-top:6px;">인식된 길드 텍스트: ${esc(r.guildToken||'-')}</div>
+        </div>
+      `).join('')}
+      <button class="btn-primary" id="btn-ocr-save">선택한 기록 저장하기</button>
+    </div>
+  </div>`;
+}
+
+function renderOcrBusyOverlay(){
+  if(!state.ocrBusy) return '';
+  return `
+  <div class="modal-overlay">
+    <div class="modal-card" style="text-align:center;">
+      <div style="margin:0 auto 14px; width:56px; height:56px;">${runeSVG(56)}</div>
+      <div class="brand-kr" style="color:var(--gold-bright); font-size:16px; margin-bottom:6px;">스크린샷 분석 중</div>
+      <div class="record-meta">${esc(state.ocrProgress||'')}</div>
+    </div>
+  </div>`;
 }
 
 function renderModal(){
@@ -645,6 +883,9 @@ function render(){
       ${renderContent()}
     </div>
     ${renderModal()}
+    ${renderGuildModal()}
+    ${renderOcrModal()}
+    ${renderOcrBusyOverlay()}
     `;
   }
   if(state.toast){
@@ -694,6 +935,30 @@ function attachHandlers(){
       overlay.addEventListener('click', e=>{ if(e.target===overlay) setState({modalOpen:false}); });
       $('#btn-modal-close').onclick = () => setState({modalOpen:false});
       $('#btn-modal-save').onclick = () => submitModal();
+    }
+
+    const setGuildBtn = document.getElementById('btn-set-guild');
+    if(setGuildBtn) setGuildBtn.onclick = () => setState({ guildModalOpen:true });
+
+    const ocrUploadBtn = document.getElementById('btn-ocr-upload');
+    const ocrFileInput = document.getElementById('ocr-file-input');
+    if(ocrUploadBtn && ocrFileInput){
+      ocrUploadBtn.onclick = () => ocrFileInput.click();
+      ocrFileInput.onchange = (e) => { handleFilesSelected(e.target.files); e.target.value=''; };
+    }
+
+    const guildOverlay = document.getElementById('guild-modal-overlay');
+    if(guildOverlay){
+      guildOverlay.addEventListener('click', e=>{ if(e.target===guildOverlay) setState({guildModalOpen:false}); });
+      document.getElementById('btn-guild-close').onclick = () => setState({guildModalOpen:false});
+      document.getElementById('btn-guild-save').onclick = () => saveGuildName();
+    }
+
+    const ocrOverlay = document.getElementById('ocr-modal-overlay');
+    if(ocrOverlay){
+      ocrOverlay.addEventListener('click', e=>{ if(e.target===ocrOverlay) setState({ocrModalOpen:false, ocrRows:[]}); });
+      document.getElementById('btn-ocr-close').onclick = () => setState({ocrModalOpen:false, ocrRows:[]});
+      document.getElementById('btn-ocr-save').onclick = () => saveOcrRows();
     }
   }
 }
