@@ -542,9 +542,10 @@ async function preprocessForNicknameOcr(file){
   const d = imageData.data;
   for(let i=0;i<d.length;i+=4){
     const r=d[i], g=d[i+1], b=d[i+2];
-    const isRed = r > 140 && (r-g) > 40 && (r-b) > 40;
-    const isBlue = b > 140 && (b-r) > 30 && (b-g) > 10;
-    const val = (isRed || isBlue) ? 0 : 255; // 빨강/파랑 글자만 검정으로 남기고 나머지는 흰 배경으로 지움
+    // 실제 스크린샷에서 검증한 기준: 진짜 빨강/파랑만 남기고 골드·흰색 로그 텍스트는 제외
+    const isRed  = r>100 && (r-g)>40 && (r-b)>40 && Math.abs(g-b)<35;
+    const isBlue = b>90 && (b-r)>40 && (b-g)>25 && Math.abs(r-g)<40;
+    const val = (isRed || isBlue) ? 0 : 255; // 빨강/파랑 닉네임 글자만 검정으로 남기고 나머지는 흰 배경으로 지움
     d[i]=d[i+1]=d[i+2]=val;
   }
   ctx.putImageData(imageData, 0, 0);
