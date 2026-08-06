@@ -211,8 +211,9 @@
   .toast{
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
     background:var(--surface); border:1px solid var(--border);
-    color:var(--text); padding:11px 18px; border-radius:30px;
-    font-size:13px; box-shadow:var(--shadow); z-index:80;
+    color:var(--text); padding:11px 18px; border-radius:16px;
+    font-size:12.5px; box-shadow:var(--shadow); z-index:80;
+    max-width:90%; white-space:pre-line; text-align:center;
   }
   .toast.err{ border-color:var(--danger); color:var(--danger); }
 </style>
@@ -335,7 +336,7 @@ function setState(patch){
 }
 function showToast(msg, isErr){
   setState({ toast:msg, toastErr:!!isErr });
-  setTimeout(()=>setState({toast:null}), 2200);
+  setTimeout(()=>setState({toast:null}), 4200);
 }
 
 function loadSession(){
@@ -596,12 +597,17 @@ async function handleFilesSelected(files){
     const tracker = Object.assign({ guildName:'', count:0, keys:[] }, state.guildTracker);
     const existingKeys = new Set(tracker.keys || []);
     let added = 0, dup = 0, unmatched = 0, notKill = 0;
+    const unmatchedTokens = [];
 
     allRows.forEach(r=>{
       if(r.result !== '처치'){ notKill++; return; }
       const key = `${r.date}_${r.time}`;
       if(existingKeys.has(key)){ dup++; return; }
-      if(!fuzzyGuildMatch(r.guildToken, tracker.guildName)){ unmatched++; return; }
+      if(!fuzzyGuildMatch(r.guildToken, tracker.guildName)){
+        unmatched++;
+        unmatchedTokens.push(r.guildToken || '(빈값)');
+        return;
+      }
       existingKeys.add(key);
       added++;
     });
@@ -611,7 +617,11 @@ async function handleFilesSelected(files){
 
     await saveGuildTracker(tracker);
     setState({ ocrBusy:false, ocrProgress:'', guildTracker: tracker });
-    showToast(`${added}건 카운트 추가 (누적 ${tracker.count}회) · 중복 ${dup} · 길드불일치 ${unmatched} · 처치아님 ${notKill}`);
+    let msg = `${added}건 카운트 추가 (누적 ${tracker.count}회) · 중복 ${dup} · 길드불일치 ${unmatched} · 처치아님 ${notKill}`;
+    if(unmatchedTokens.length){
+      msg += `\n인식된 길드 텍스트: ${unmatchedTokens.slice(0,5).join(', ')}`;
+    }
+    showToast(msg);
   }catch(e){
     console.error(e);
     setState({ ocrBusy:false, ocrProgress:'' });
