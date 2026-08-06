@@ -61,17 +61,9 @@
   input::placeholder, textarea::placeholder{color:var(--text-muted);}
 
   /* ---------- rune emblem ---------- */
-  .rune{
-    display:block;
-  }
-  .rune-spin{
-    animation:spin 70s linear infinite;
-    transform-origin:50% 50%;
-  }
-  .rune-spin-rev{
-    animation:spinrev 90s linear infinite;
-    transform-origin:50% 50%;
-  }
+  .rune{ display:block; }
+  .rune-spin{ animation:spin 70s linear infinite; transform-origin:50% 50%; }
+  .rune-spin-rev{ animation:spinrev 90s linear infinite; transform-origin:50% 50%; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
   @keyframes spinrev{ to{ transform:rotate(-360deg); } }
   @media (prefers-reduced-motion: reduce){
@@ -80,94 +72,48 @@
 
   /* ---------- login screen ---------- */
   .login-wrap{
-    flex:1;
-    width:100%;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:32px 20px;
-    position:relative;
+    flex:1; width:100%; display:flex; align-items:center; justify-content:center;
+    padding:32px 20px; position:relative;
   }
   .login-card{
-    width:100%;
-    max-width:380px;
+    width:100%; max-width:380px;
     background:linear-gradient(180deg, var(--surface) 0%, var(--bg-2) 100%);
-    border:1px solid var(--border);
-    border-radius:20px;
-    padding:36px 28px 30px;
-    box-shadow:var(--shadow);
-    position:relative;
-    z-index:2;
-    text-align:center;
+    border:1px solid var(--border); border-radius:20px;
+    padding:36px 28px 30px; box-shadow:var(--shadow);
+    position:relative; z-index:2; text-align:center;
   }
-  .emblem-box{
-    width:96px; height:96px;
-    margin:0 auto 14px;
-    position:relative;
-  }
+  .emblem-box{ width:96px; height:96px; margin:0 auto 14px; position:relative; }
   .login-title{
-    font-size:30px;
-    letter-spacing:.04em;
-    margin:6px 0 2px;
-    color:var(--gold-bright);
-    text-shadow:0 0 18px rgba(224,177,92,0.35);
+    font-size:30px; letter-spacing:.04em; margin:6px 0 2px;
+    color:var(--gold-bright); text-shadow:0 0 18px rgba(224,177,92,0.35);
   }
-  .login-sub{
-    font-size:11px;
-    color:var(--text-muted);
-    margin-bottom:26px;
-  }
+  .login-sub{ font-size:11px; color:var(--text-muted); margin-bottom:26px; }
   .field{margin-bottom:12px; text-align:left;}
-  .field label{
-    display:block;
-    font-size:12px;
-    color:var(--text-muted);
-    margin-bottom:6px;
-  }
-  .err-msg{
-    color:var(--danger);
-    font-size:12.5px;
-    margin:-2px 0 10px;
-    text-align:left;
-    min-height:16px;
-  }
+  .field label{ display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px; }
+  .err-msg{ color:var(--danger); font-size:12.5px; margin:-2px 0 10px; text-align:left; min-height:16px; }
   .btn-primary{
-    width:100%;
-    padding:13px;
-    border:none;
-    border-radius:10px;
+    width:100%; padding:13px; border:none; border-radius:10px;
     background:linear-gradient(180deg, var(--gold-bright), var(--gold));
-    color:#241705;
-    font-weight:700;
-    font-size:15px;
-    margin-top:6px;
+    color:#241705; font-weight:700; font-size:15px; margin-top:6px;
     box-shadow:0 6px 18px rgba(224,177,92,0.25);
     transition:transform .1s, box-shadow .15s;
   }
   .btn-primary:hover{ box-shadow:0 8px 22px rgba(224,177,92,0.4); }
   .btn-primary:active{ transform:translateY(1px); }
   .btn-primary:disabled{ opacity:.55; cursor:default; }
-  .switch-link{
-    margin-top:18px;
-    font-size:13px;
-    color:var(--text-muted);
-  }
+  .switch-link{ margin-top:18px; font-size:13px; color:var(--text-muted); }
   .switch-link button{
     background:none; border:none; color:var(--violet);
-    font-size:13px; font-weight:700; text-decoration:underline;
-    padding:0;
+    font-size:13px; font-weight:700; text-decoration:underline; padding:0;
   }
 
   /* ---------- app shell ---------- */
   .app-shell{ width:100%; max-width:520px; min-height:100vh; display:flex; flex-direction:column; }
   .topbar{
     display:flex; align-items:center; justify-content:space-between;
-    padding:16px 18px 14px;
-    border-bottom:1px solid var(--border);
-    position:sticky; top:0;
-    background:rgba(18,12,31,0.92);
-    backdrop-filter:blur(6px);
-    z-index:10;
+    padding:16px 18px 14px; border-bottom:1px solid var(--border);
+    position:sticky; top:0; background:rgba(18,12,31,0.92);
+    backdrop-filter:blur(6px); z-index:10;
   }
   .topbar-left{display:flex; align-items:center; gap:10px;}
   .topbar-emblem{width:34px; height:34px;}
@@ -175,48 +121,27 @@
   .topbar-user{font-size:11.5px; color:var(--text-muted); margin-top:1px;}
   .logout-btn{
     background:transparent; border:1px solid var(--border);
-    color:var(--text-muted); border-radius:8px; padding:7px 11px;
-    font-size:12.5px;
+    color:var(--text-muted); border-radius:8px; padding:7px 11px; font-size:12.5px;
   }
   .logout-btn:hover{ color:var(--text); border-color:var(--gold); }
 
-  .tabbar{
-    display:flex; gap:6px;
-    padding:12px 14px 0;
-  }
+  .tabbar{ display:flex; gap:6px; padding:12px 14px 0; }
   .tab-btn{
-    flex:1;
-    background:var(--surface);
-    border:1px solid var(--border);
-    color:var(--text-muted);
-    padding:10px 6px;
-    border-radius:10px 10px 0 0;
-    font-size:12.5px;
-    font-weight:500;
-    display:flex; flex-direction:column; align-items:center; gap:4px;
-    border-bottom:none;
+    flex:1; background:var(--surface); border:1px solid var(--border);
+    color:var(--text-muted); padding:10px 6px; border-radius:10px 10px 0 0;
+    font-size:12.5px; font-weight:500; display:flex; flex-direction:column;
+    align-items:center; gap:4px; border-bottom:none;
   }
   .tab-btn.active{
-    color:var(--gold-bright);
-    background:var(--surface-2);
+    color:var(--gold-bright); background:var(--surface-2);
     box-shadow:0 -2px 0 var(--gold) inset;
   }
 
-  .content{
-    flex:1;
-    background:var(--surface-2);
-    padding:16px 16px 90px;
-    overflow-y:auto;
-  }
-  .section-desc{
-    font-size:12.5px; color:var(--text-muted);
-    margin:2px 0 16px;
-  }
+  .content{ flex:1; background:var(--surface-2); padding:16px 16px 90px; overflow-y:auto; }
+  .section-desc{ font-size:12.5px; color:var(--text-muted); margin:2px 0 16px; }
   .date-heading{
-    font-size:12px; color:var(--gold); font-weight:700;
-    letter-spacing:.04em;
-    margin:18px 0 8px;
-    display:flex; align-items:center; gap:8px;
+    font-size:12px; color:var(--gold); font-weight:700; letter-spacing:.04em;
+    margin:18px 0 8px; display:flex; align-items:center; gap:8px;
   }
   .date-heading::after{
     content:''; flex:1; height:1px;
@@ -225,19 +150,12 @@
   .date-heading:first-child{ margin-top:0; }
 
   .record-card{
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:12px;
-    padding:14px 14px 12px;
-    margin-bottom:10px;
-    position:relative;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:14px 14px 12px; margin-bottom:10px; position:relative;
   }
   .record-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
   .record-title{ font-size:14.5px; font-weight:700; color:var(--text); }
-  .badge{
-    font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px;
-    display:inline-block;
-  }
+  .badge{ font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px; display:inline-block; }
   .badge-win{ background:rgba(111,208,140,0.16); color:var(--success); }
   .badge-lose{ background:rgba(224,112,122,0.16); color:var(--danger); }
   .badge-in{ background:rgba(224,177,92,0.16); color:var(--gold-bright); }
@@ -246,64 +164,42 @@
   .record-meta{ font-size:12.5px; color:var(--text-muted); line-height:1.6; }
   .record-meta b{ color:var(--text); font-weight:600; }
   .chip-row{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
-  .chip{
-    background:var(--violet-soft); color:var(--violet);
-    font-size:11.5px; padding:3px 9px; border-radius:20px;
-  }
+  .chip{ background:var(--violet-soft); color:var(--violet); font-size:11.5px; padding:3px 9px; border-radius:20px; }
   .record-foot{
     display:flex; align-items:center; justify-content:space-between;
     margin-top:8px; font-size:11px; color:var(--text-muted);
   }
-  .del-btn{
-    background:none; border:none; color:var(--text-muted);
-    font-size:16px; line-height:1; padding:2px 4px;
-  }
+  .del-btn{ background:none; border:none; color:var(--text-muted); font-size:16px; line-height:1; padding:2px 4px; }
   .del-btn:hover{ color:var(--danger); }
 
-  .empty-state{
-    text-align:center; padding:50px 20px; color:var(--text-muted);
-  }
+  .empty-state{ text-align:center; padding:50px 20px; color:var(--text-muted); }
   .empty-emblem{ width:56px; height:56px; margin:0 auto 14px; opacity:.5; }
   .empty-state p{ font-size:13.5px; }
 
   .fab{
-    position:fixed;
-    bottom:26px; left:50%;
-    transform:translateX(calc(-50% + 220px));
-    width:56px; height:56px;
-    border-radius:50%;
-    border:none;
+    position:fixed; bottom:26px; left:50%; transform:translateX(calc(-50% + 220px));
+    width:56px; height:56px; border-radius:50%; border:none;
     background:linear-gradient(180deg, var(--gold-bright), var(--gold));
-    color:#241705;
-    font-size:26px; font-weight:700;
-    box-shadow:0 8px 24px rgba(224,177,92,0.4);
-    z-index:20;
+    color:#241705; font-size:26px; font-weight:700;
+    box-shadow:0 8px 24px rgba(224,177,92,0.4); z-index:20;
   }
-  @media (max-width:559px){
-    .fab{ left:auto; right:22px; transform:none; }
-  }
+  @media (max-width:559px){ .fab{ left:auto; right:22px; transform:none; } }
 
   /* ---------- modal ---------- */
   .modal-overlay{
     position:fixed; inset:0; background:rgba(8,5,14,0.72);
-    display:flex; align-items:flex-end; justify-content:center;
-    z-index:50;
+    display:flex; align-items:flex-end; justify-content:center; z-index:50;
   }
   .modal-card{
-    width:100%; max-width:520px;
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:20px 20px 0 0;
-    padding:22px 20px 26px;
-    max-height:88vh; overflow-y:auto;
+    width:100%; max-width:520px; background:var(--surface);
+    border:1px solid var(--border); border-radius:20px 20px 0 0;
+    padding:22px 20px 26px; max-height:88vh; overflow-y:auto;
   }
   .modal-title{
     font-size:17px; color:var(--gold-bright); margin-bottom:16px;
     display:flex; align-items:center; justify-content:space-between;
   }
-  .modal-close{
-    background:none; border:none; color:var(--text-muted); font-size:20px;
-  }
+  .modal-close{ background:none; border:none; color:var(--text-muted); font-size:20px; }
   .field-row{ display:flex; gap:10px; }
   .field-row .field{ flex:1; }
 
@@ -318,19 +214,34 @@
     color:var(--text); padding:11px 18px; border-radius:30px;
     font-size:13px; box-shadow:var(--shadow); z-index:80;
   }
+  .toast.err{ border-color:var(--danger); color:var(--danger); }
 </style>
 </head>
 <body>
 <div id="root"></div>
 
-<script>
-const { useState, useEffect, useCallback } = window.React || {};
-</script>
-<script type="text/javascript">
-(function(){
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, addDoc, deleteDoc, collection, getDocs
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* ============ rune SVG builders ============ */
-function runeSVG(size, id){
+/* ============ Firebase 연결 ============ */
+const firebaseConfig = {
+  apiKey: "AIzaSyCSe6GnDZ020bGchl_nCX_WaEALS-8Acek",
+  authDomain: "sol-cff63.firebaseapp.com",
+  projectId: "sol-cff63",
+  storageBucket: "sol-cff63.firebasestorage.app",
+  messagingSenderId: "289679914645",
+  appId: "1:289679914645:web:5c0145d684216ba689cd9c"
+};
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+
+const COLLECTIONS = { pvp:'pvpRecords', storage:'guildStorageRecords', boss:'bossRecords' };
+
+/* ============ rune SVG ============ */
+function runeSVG(size){
   return `
   <svg class="rune" viewBox="0 0 100 100" width="${size}" height="${size}">
     <g class="rune-spin">
@@ -350,110 +261,13 @@ function runeSVG(size, id){
   </svg>`;
 }
 
-/* ============ storage helpers ============ */
-async function getShared(key, fallback){
-  try{
-    const r = await window.storage.get(key, true);
-    return r ? JSON.parse(r.value) : fallback;
-  }catch(e){ return fallback; }
-}
-async function setShared(key, value){
-  await window.storage.set(key, JSON.stringify(value), true);
-}
+/* ============ helpers ============ */
 async function sha256(text){
   const enc = new TextEncoder().encode(text);
   const buf = await crypto.subtle.digest('SHA-256', enc);
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
-function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
-
-const RECORD_KEYS = {
-  pvp: 'pvp-records',
-  storage: 'guild-storage-records',
-  boss: 'boss-records'
-};
-
-/* ============ app state ============ */
-let state = {
-  screen:'loading', // loading | login | signup | app
-  errorMsg:'',
-  user:null, // {id, nickname}
-  activeTab:'pvp',
-  records:{ pvp:[], storage:[], boss:[] },
-  modalOpen:false,
-  toast:null,
-};
-
-function setState(patch){
-  state = Object.assign({}, state, patch);
-  render();
-}
-
-/* ============ init ============ */
-async function init(){
-  setState({screen:'login'});
-}
-
-/* ============ auth ============ */
-async function handleSignup(id, pw, nickname){
-  id = id.trim(); nickname = nickname.trim();
-  if(!id || !pw || !nickname){ setState({errorMsg:'모든 항목을 입력해 주세요.'}); return; }
-  if(pw.length < 4){ setState({errorMsg:'비밀번호는 4자 이상이어야 해요.'}); return; }
-  const users = await getShared('users', {});
-  if(users[id]){ setState({errorMsg:'이미 사용 중인 아이디예요.'}); return; }
-  const hash = await sha256(pw);
-  users[id] = { password:hash, nickname, createdAt:Date.now() };
-  await setShared('users', users);
-  await enterApp({id, nickname});
-}
-
-async function handleLogin(id, pw){
-  id = id.trim();
-  if(!id || !pw){ setState({errorMsg:'아이디와 비밀번호를 입력해 주세요.'}); return; }
-  const users = await getShared('users', {});
-  const u = users[id];
-  if(!u){ setState({errorMsg:'존재하지 않는 아이디예요.'}); return; }
-  const hash = await sha256(pw);
-  if(hash !== u.password){ setState({errorMsg:'비밀번호가 일치하지 않아요.'}); return; }
-  await enterApp({id, nickname:u.nickname});
-}
-
-async function enterApp(user){
-  setState({screen:'loading'});
-  const [pvp, storageRecs, boss] = await Promise.all([
-    getShared(RECORD_KEYS.pvp, []),
-    getShared(RECORD_KEYS.storage, []),
-    getShared(RECORD_KEYS.boss, [])
-  ]);
-  setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, errorMsg:'' });
-}
-
-function handleLogout(){
-  setState({ screen:'login', user:null, errorMsg:'', activeTab:'pvp' });
-}
-
-/* ============ records ============ */
-async function addRecord(type, data){
-  const key = RECORD_KEYS[type];
-  const list = (await getShared(key, [])).slice();
-  const rec = Object.assign({ id:uid(), author:state.user.id, authorNick:state.user.nickname, createdAt:Date.now() }, data);
-  list.push(rec);
-  await setShared(key, list);
-  const records = Object.assign({}, state.records, {[type]:list});
-  setState({ records, modalOpen:false, toast:'기록이 추가됐어요.' });
-  setTimeout(()=>setState({toast:null}), 1800);
-}
-
-async function deleteRecord(type, id){
-  const key = RECORD_KEYS[type];
-  const list = (await getShared(key, [])).filter(r=>r.id!==id);
-  await setShared(key, list);
-  const records = Object.assign({}, state.records, {[type]:list});
-  setState({ records });
-}
-
-/* ============ render helpers ============ */
 function esc(s){
   return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -463,13 +277,127 @@ function fmtDate(d){
   return `${d.slice(5).replace('-','.')} (${days[dt.getDay()]})`;
 }
 
+/* ============ Firestore 데이터 함수 ============ */
+async function fetchUser(id){
+  const snap = await getDoc(doc(db, 'users', id));
+  return snap.exists() ? snap.data() : null;
+}
+async function createUser(id, data){
+  await setDoc(doc(db, 'users', id), data);
+}
+async function fetchRecords(type){
+  const snap = await getDocs(collection(db, COLLECTIONS[type]));
+  return snap.docs.map(d => Object.assign({ id:d.id }, d.data()));
+}
+async function createRecord(type, data){
+  const ref = await addDoc(collection(db, COLLECTIONS[type]), data);
+  return ref.id;
+}
+async function removeRecord(type, id){
+  await deleteDoc(doc(db, COLLECTIONS[type], id));
+}
+
+/* ============ 앱 상태 ============ */
+let state = {
+  screen:'loading',
+  errorMsg:'',
+  user:null,
+  activeTab:'pvp',
+  records:{ pvp:[], storage:[], boss:[] },
+  modalOpen:false,
+  toast:null,
+  toastErr:false,
+};
+function setState(patch){
+  state = Object.assign({}, state, patch);
+  render();
+}
+function showToast(msg, isErr){
+  setState({ toast:msg, toastErr:!!isErr });
+  setTimeout(()=>setState({toast:null}), 2200);
+}
+
+async function init(){
+  setState({ screen:'login' });
+}
+
+/* ============ 인증 ============ */
+async function handleSignup(id, pw, nickname){
+  id = (id||'').trim(); nickname = (nickname||'').trim();
+  if(!id || !pw || !nickname){ setState({errorMsg:'모든 항목을 입력해 주세요.'}); return; }
+  if(pw.length < 4){ setState({errorMsg:'비밀번호는 4자 이상이어야 해요.'}); return; }
+  try{
+    const existing = await fetchUser(id);
+    if(existing){ setState({errorMsg:'이미 사용 중인 아이디예요.'}); return; }
+    const hash = await sha256(pw);
+    await createUser(id, { password:hash, nickname, createdAt:Date.now() });
+    await enterApp({ id, nickname });
+  }catch(e){
+    console.error(e);
+    setState({errorMsg:'서버 연결에 실패했어요. 잠시 후 다시 시도해 주세요.'});
+  }
+}
+async function handleLogin(id, pw){
+  id = (id||'').trim();
+  if(!id || !pw){ setState({errorMsg:'아이디와 비밀번호를 입력해 주세요.'}); return; }
+  try{
+    const u = await fetchUser(id);
+    if(!u){ setState({errorMsg:'존재하지 않는 아이디예요.'}); return; }
+    const hash = await sha256(pw);
+    if(hash !== u.password){ setState({errorMsg:'비밀번호가 일치하지 않아요.'}); return; }
+    await enterApp({ id, nickname:u.nickname });
+  }catch(e){
+    console.error(e);
+    setState({errorMsg:'서버 연결에 실패했어요. 잠시 후 다시 시도해 주세요.'});
+  }
+}
+async function enterApp(user){
+  setState({ screen:'loading' });
+  try{
+    const [pvp, storageRecs, boss] = await Promise.all([
+      fetchRecords('pvp'), fetchRecords('storage'), fetchRecords('boss')
+    ]);
+    setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, errorMsg:'' });
+  }catch(e){
+    console.error(e);
+    setState({ screen:'login', errorMsg:'데이터를 불러오지 못했어요. 다시 로그인해 주세요.' });
+  }
+}
+function handleLogout(){
+  setState({ screen:'login', user:null, errorMsg:'', activeTab:'pvp' });
+}
+
+/* ============ 기록 ============ */
+async function addRecord(type, data){
+  try{
+    const rec = Object.assign({ author:state.user.id, authorNick:state.user.nickname, createdAt:Date.now() }, data);
+    const id = await createRecord(type, rec);
+    const records = Object.assign({}, state.records, { [type]: state.records[type].concat([Object.assign({id}, rec)]) });
+    setState({ records, modalOpen:false });
+    showToast('기록이 추가됐어요.');
+  }catch(e){
+    console.error(e);
+    showToast('저장에 실패했어요. 다시 시도해 주세요.', true);
+  }
+}
+async function deleteRecord(type, id){
+  try{
+    await removeRecord(type, id);
+    const records = Object.assign({}, state.records, { [type]: state.records[type].filter(r=>r.id!==id) });
+    setState({ records });
+  }catch(e){
+    console.error(e);
+    showToast('삭제에 실패했어요. 다시 시도해 주세요.', true);
+  }
+}
+
+/* ============ 화면 렌더 ============ */
 const TAB_META = {
   pvp:{ label:'PVP 기록실', icon:'⚔' },
   storage:{ label:'길드 창고', icon:'⛃' },
   boss:{ label:'보스타임', icon:'☠' },
 };
 
-/* ============ screens ============ */
 function renderLoading(){
   return `<div class="loading-wrap">${runeSVG(64)}<div>불러오는 중...</div></div>`;
 }
@@ -682,13 +610,12 @@ function renderModal(){
   </div>`;
 }
 
-/* ============ main render ============ */
 function render(){
   const root = document.getElementById('root');
   let html = '';
 
   if(state.screen==='loading'){
-    html = `<div id="root-inner" style="display:flex;flex-direction:column;min-height:100vh;width:100%;align-items:center;">${renderLoading()}</div>`;
+    html = `<div style="display:flex;flex-direction:column;min-height:100vh;width:100%;align-items:center;">${renderLoading()}</div>`;
   }else if(state.screen==='login' || state.screen==='signup'){
     html = renderLogin(state.screen);
   }else if(state.screen==='app'){
@@ -699,8 +626,10 @@ function render(){
       ${renderContent()}
     </div>
     ${renderModal()}
-    ${state.toast?`<div class="toast">${esc(state.toast)}</div>`:''}
     `;
+  }
+  if(state.toast){
+    html += `<div class="toast ${state.toastErr?'err':''}">${esc(state.toast)}</div>`;
   }
 
   root.innerHTML = html;
@@ -782,7 +711,6 @@ function submitModal(){
 }
 
 init();
-})();
 </script>
 </body>
 </html>
