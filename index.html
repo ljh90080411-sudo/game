@@ -533,19 +533,47 @@ function loadImageFromFile(file){
 async function preprocessForNicknameOcr(file){
   const img = await loadImageFromFile(file);
   const scale = 2;
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(img.width * scale);
-  canvas.height = Math.round(img.height * scale);
+  canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, w, h);
+  const imageData = ctx.getImageData(0, 0, w, h);
   const d = imageData.data;
-  for(let i=0;i<d.length;i+=4){
+  const n = w*h;
+
+  const match = new Uint8Array(n);
+  for(let p=0, i=0; p<n; p++, i+=4){
     const r=d[i], g=d[i+1], b=d[i+2];
-    // 실제 스크린샷에서 검증한 기준: 진짜 빨강/파랑만 남기고 골드·흰색 로그 텍스트는 제외
-    const isRed  = r>100 && (r-g)>40 && (r-b)>40 && Math.abs(g-b)<35;
-    const isBlue = b>90 && (b-r)>40 && (b-g)>25 && Math.abs(r-g)<40;
-    const val = (isRed || isBlue) ? 0 : 255; // 빨강/파랑 닉네임 글자만 검정으로 남기고 나머지는 흰 배경으로 지움
+    // 실제 스크린샷으로 검증한 기준 (안티에일리어싱 가장자리도 포함되도록 완화)
+    const isRed  = r>85 && (r-g)>22 && (r-b)>22 && Math.abs(g-b)<40;
+    const isBlue = b>75 && (b-r)>22 && (b-g)>15 && Math.abs(r-g)<45;
+    match[p] = (isRed || isBlue) ? 1 : 0;
+  }
+
+  // 1px 팽창: 끊긴 글자 획을 이어붙여 OCR이 글자 모양을 알아보기 쉽게 만듦
+  const out = new Uint8Array(n);
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const p = y*w+x;
+      if(match[p]){ out[p]=1; continue; }
+      let hit=0;
+      for(let dy=-1; dy<=1 && !hit; dy++){
+        const ny=y+dy;
+        if(ny<0||ny>=h) continue;
+        for(let dx=-1; dx<=1; dx++){
+          const nx=x+dx;
+          if(nx<0||nx>=w) continue;
+          if(match[ny*w+nx]){ hit=1; break; }
+        }
+      }
+      out[p]=hit;
+    }
+  }
+
+  for(let p=0, i=0; p<n; p++, i+=4){
+    const val = out[p] ? 0 : 255;
     d[i]=d[i+1]=d[i+2]=val;
   }
   ctx.putImageData(imageData, 0, 0);
