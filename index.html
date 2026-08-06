@@ -320,6 +320,8 @@ let state = {
   ocrRows:[],
   ocrBusy:false,
   ocrProgress:'',
+  ocrDebugOpen:false,
+  ocrDebugText:'',
 };
 function setState(patch){
   state = Object.assign({}, state, patch);
@@ -455,13 +457,45 @@ function loadTesseract(){
   return tesseractLoadPromise;
 }
 
+function loadImageFromFile(file){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('이미지를 불러오지 못했어요.'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function preprocessForOcr(file){
+  const img = await loadImageFromFile(file);
+  const scale = 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = imageData.data;
+  for(let i=0;i<d.length;i+=4){
+    const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+    const val = lum > 120 ? 0 : 255; // 밝은 글자 -> 검정 글자, 어두운 배경 -> 흰 배경
+    d[i]=d[i+1]=d[i+2]=val;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
 function parsePvpOcrText(text){
   const rows = [];
-  const anchorRe = /(\d{4}\/\d{2}\/\d{2})\s+(\d{2}:\d{2})/g;
+  const anchorRe = /(\d{4})\s*[\/\.\-]\s*(\d{2})\s*[\/\.\-]\s*(\d{2})[^\d]{1,4}(\d{1,2})\s*[:.]\s*(\d{2})/g;
   const anchors = [];
   let m;
   while((m = anchorRe.exec(text))){
-    anchors.push({ index:m.index, date:m[1], time:m[2], len:m[0].length });
+    anchors.push({
+      index:m.index, len:m[0].length,
+      date:`${m[1]}/${m[2]}/${m[3]}`,
+      time:`${m[4].padStart(2,'0')}:${m[5]}`
+    });
   }
   for(let i=0;i<anchors.length;i++){
     const start = anchors[i].index + anchors[i].len;
@@ -497,15 +531,19 @@ async function handleFilesSelected(files){
   try{
     await loadTesseract();
     let allRows = [];
+    let rawTextAll = '';
     for(const file of files){
+      setState({ ocrBusy:true, ocrProgress:`이미지 처리 중 (${file.name})` });
+      const canvas = await preprocessForOcr(file);
       setState({ ocrBusy:true, ocrProgress:`이미지 인식 중 (${file.name})` });
-      const { data } = await window.Tesseract.recognize(file, 'kor+eng', {
+      const { data } = await window.Tesseract.recognize(canvas, 'kor+eng', {
         logger: m => {
           if(m.status === 'recognizing text'){
             setState({ ocrBusy:true, ocrProgress:`인식 중... ${Math.round((m.progress||0)*100)}%` });
           }
         }
       });
+      rawTextAll += (rawTextAll?'\n\n----------\n\n':'') + (data.text || '');
       allRows = allRows.concat(parsePvpOcrText(data.text || ''));
     }
 
@@ -521,8 +559,7 @@ async function handleFilesSelected(files){
     });
 
     if(finalRows.length === 0){
-      setState({ ocrBusy:false, ocrProgress:'' });
-      showToast('스크린샷에서 기록을 인식하지 못했어요.', true);
+      setState({ ocrBusy:false, ocrProgress:'', ocrDebugOpen:true, ocrDebugText: rawTextAll });
       return;
     }
     setState({ ocrBusy:false, ocrProgress:'', ocrModalOpen:true, ocrRows:finalRows });
@@ -813,6 +850,21 @@ function renderOcrBusyOverlay(){
   </div>`;
 }
 
+function renderOcrDebugModal(){
+  if(!state.ocrDebugOpen) return '';
+  return `
+  <div class="modal-overlay" id="ocr-debug-overlay">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>인식된 기록이 없어요</span>
+        <button class="modal-close" id="btn-ocr-debug-close">✕</button>
+      </div>
+      <div class="record-meta" style="margin-bottom:10px;">날짜/시간 형식을 못 찾았어요. 아래는 OCR이 실제로 읽어낸 원본 텍스트예요. 화질이 낮거나 글자가 잘렸을 수 있어요 — 더 선명한 스크린샷으로 다시 시도해보세요.</div>
+      <textarea readonly rows="10" style="font-size:11.5px; line-height:1.5;">${esc(state.ocrDebugText||'(인식된 텍스트 없음)')}</textarea>
+    </div>
+  </div>`;
+}
+
 function renderModal(){
   if(!state.modalOpen) return '';
   const type = state.activeTab;
@@ -886,6 +938,7 @@ function render(){
     ${renderGuildModal()}
     ${renderOcrModal()}
     ${renderOcrBusyOverlay()}
+    ${renderOcrDebugModal()}
     `;
   }
   if(state.toast){
@@ -959,6 +1012,12 @@ function attachHandlers(){
       ocrOverlay.addEventListener('click', e=>{ if(e.target===ocrOverlay) setState({ocrModalOpen:false, ocrRows:[]}); });
       document.getElementById('btn-ocr-close').onclick = () => setState({ocrModalOpen:false, ocrRows:[]});
       document.getElementById('btn-ocr-save').onclick = () => saveOcrRows();
+    }
+
+    const ocrDebugOverlay = document.getElementById('ocr-debug-overlay');
+    if(ocrDebugOverlay){
+      ocrDebugOverlay.addEventListener('click', e=>{ if(e.target===ocrDebugOverlay) setState({ocrDebugOpen:false, ocrDebugText:''}); });
+      document.getElementById('btn-ocr-debug-close').onclick = () => setState({ocrDebugOpen:false, ocrDebugText:''});
     }
   }
 }
