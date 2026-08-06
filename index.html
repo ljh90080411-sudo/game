@@ -1004,7 +1004,12 @@ function attachHandlers(){
     const ocrFileInput = document.getElementById('ocr-file-input');
     if(ocrUploadBtn && ocrFileInput){
       ocrUploadBtn.onclick = () => ocrFileInput.click();
-      ocrFileInput.onchange = (e) => { handleFilesSelected(e.target.files); e.target.value=''; };
+      ocrFileInput.onchange = (e) => {
+        const filesArr = Array.from(e.target.files || []);
+        e.target.value = '';
+        if(filesArr.length === 0){ showToast('선택된 이미지가 없어요.', true); return; }
+        handleFilesSelected(filesArr);
+      };
     }
 
     const guildOverlay = document.getElementById('guild-modal-overlay');
