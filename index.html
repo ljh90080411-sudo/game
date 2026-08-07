@@ -375,6 +375,8 @@ let state = {
   bossOcrDate:'',
   bossOcrTimeSlot:'',
   storageLogs:[],
+  liveScanActive:false,
+  liveScanStatus:'',
   ocrBusy:false,
   ocrProgress:'',
   ocrDebugOpen:false,
@@ -457,6 +459,7 @@ async function enterApp(user, remember){
   }
 }
 function handleLogout(){
+  stopLiveScan();
   clearSession();
   setState({ screen:'login', user:null, errorMsg:'', activeTab:'pvp' });
 }
@@ -589,6 +592,19 @@ async function preprocessForNicknameOcr(file){
   return canvas;
 }
 
+function invertCanvasInPlace(canvas){
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = imageData.data;
+  for(let i=0;i<d.length;i+=4){
+    const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+    const val = 255 - lum;
+    d[i]=d[i+1]=d[i+2]=val;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
 async function preprocessForOcr(file){
   const img = await loadImageFromFile(file);
   const scale = 2;
@@ -597,15 +613,7 @@ async function preprocessForOcr(file){
   canvas.height = Math.round(img.height * scale);
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const d = imageData.data;
-  for(let i=0;i<d.length;i+=4){
-    const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-    const val = 255 - lum; // 단순 반전: 밝은 글자->어두운 글자, 어두운 배경->밝은 배경
-    d[i]=d[i+1]=d[i+2]=val;
-  }
-  ctx.putImageData(imageData, 0, 0);
-  return canvas;
+  return invertCanvasInPlace(canvas);
 }
 
 function levenshtein(a, b){
@@ -965,6 +973,82 @@ function computeStorageTotals(){
   return Object.entries(totals).map(([item,qty])=>({item,qty})).sort((a,b)=>b.qty-a.qty);
 }
 
+/* ============ 라이브 스캔 (PC 화면 공유 기반) ============ */
+let liveScanStream = null;
+let liveScanVideo = null;
+let liveScanTimer = null;
+let liveScanBusy = false;
+const LIVE_SCAN_INTERVAL_MS = 2000;
+
+async function startLiveScan(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
+    showToast('이 브라우저는 화면 공유를 지원하지 않아요. PC용 크롬/엣지를 사용해주세요.', true);
+    return;
+  }
+  try{
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video:{ frameRate:5 }, audio:false });
+    liveScanStream = stream;
+    liveScanVideo = document.createElement('video');
+    liveScanVideo.srcObject = stream;
+    liveScanVideo.muted = true;
+    await liveScanVideo.play();
+    stream.getVideoTracks()[0].addEventListener('ended', stopLiveScan);
+    await loadTesseract();
+    setState({ liveScanActive:true, liveScanStatus:'감시 중...' });
+    liveScanTimer = setInterval(liveScanTick, LIVE_SCAN_INTERVAL_MS);
+  }catch(e){
+    console.error(e);
+    showToast('화면 공유를 시작하지 못했어요.', true);
+  }
+}
+
+function stopLiveScan(){
+  if(liveScanTimer){ clearInterval(liveScanTimer); liveScanTimer = null; }
+  if(liveScanStream){ liveScanStream.getTracks().forEach(t=>t.stop()); liveScanStream = null; }
+  liveScanVideo = null;
+  liveScanBusy = false;
+  setState({ liveScanActive:false, liveScanStatus:'' });
+}
+
+async function liveScanTick(){
+  if(liveScanBusy || !liveScanVideo) return;
+  const vw = liveScanVideo.videoWidth, vh = liveScanVideo.videoHeight;
+  if(!vw || !vh) return;
+  liveScanBusy = true;
+  try{
+    setState({ liveScanStatus:'캡처·인식 중...' });
+    const canvas = document.createElement('canvas');
+    canvas.width = vw; canvas.height = vh;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(liveScanVideo, 0, 0, vw, vh);
+    invertCanvasInPlace(canvas);
+
+    const { data } = await window.Tesseract.recognize(canvas, 'kor+eng');
+    const rows = parseStorageOcrText(data.text || '');
+
+    let added = 0;
+    if(rows.length){
+      const existingKeys = new Set(state.storageLogs.map(l=>l.dedupeKey));
+      for(const r of rows){
+        const key = `${r.date}_${r.time}_${r.item}_${r.qty}`;
+        if(existingKeys.has(key)) continue;
+        existingKeys.add(key);
+        const rec = Object.assign({ uploader:state.user.id, uploaderNick:state.user.nickname, createdAt:Date.now(), dedupeKey:key }, r);
+        try{
+          const id = await addStorageLog(rec);
+          state.storageLogs = state.storageLogs.concat([Object.assign({id}, rec)]);
+          added++;
+        }catch(e){ console.error(e); }
+      }
+    }
+    setState({ liveScanStatus: added>0 ? `감시 중... (방금 ${added}건 등록)` : '감시 중...' });
+  }catch(e){
+    console.error(e);
+    setState({ liveScanStatus:'감시 중... (인식 오류 발생, 계속 감시함)' });
+  }
+  liveScanBusy = false;
+}
+
 function getWeekRange(){
   const now = new Date();
   const dow = (now.getDay()+6)%7; // 월=0 ... 일=6
@@ -1205,9 +1289,14 @@ function renderBossControls(){
 function renderStorageControls(){
   const totals = computeStorageTotals();
   return `
-  <div style="display:flex; gap:8px; margin-bottom:16px;">
-    <button class="logout-btn" id="btn-storage-ocr-upload" style="flex:1;">📷 창고 화면 스캔해서 자동 등록</button>
+  <div style="display:flex; gap:8px; margin-bottom:8px;">
+    <button class="logout-btn" id="btn-storage-ocr-upload" style="flex:1;">📷 스크린샷으로 등록</button>
+    ${state.liveScanActive
+      ? `<button class="logout-btn" id="btn-live-scan-stop" style="flex:1; border-color:var(--danger); color:var(--danger);">⏹ 라이브 스캔 중지</button>`
+      : `<button class="logout-btn" id="btn-live-scan-start" style="flex:1;">🔴 라이브 스캔 (PC 전용)</button>`
+    }
   </div>
+  ${state.liveScanActive ? `<div class="section-desc" style="margin-top:-2px;">${esc(state.liveScanStatus||'감시 중...')}</div>` : ''}
   <input type="file" id="storage-file-input" accept="image/*" multiple style="display:none;">
 
   <div class="date-heading">아이템별 누적 수량 (자동 스캔 기준)</div>
@@ -1533,6 +1622,11 @@ function attachHandlers(){
         handleStorageFilesSelected(filesArr);
       };
     }
+
+    const liveScanStartBtn = document.getElementById('btn-live-scan-start');
+    if(liveScanStartBtn) liveScanStartBtn.onclick = () => startLiveScan();
+    const liveScanStopBtn = document.getElementById('btn-live-scan-stop');
+    if(liveScanStopBtn) liveScanStopBtn.onclick = () => stopLiveScan();
   }
 }
 
