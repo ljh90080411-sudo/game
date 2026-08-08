@@ -786,34 +786,48 @@ function extractNameCandidates(text){
   return names;
 }
 
+/* ============ OCR 서버(Render) 연동 ============ */
+const OCR_SERVER_URL = 'https://game-2lw0.onrender.com';
+
+function fileToDataURL(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('파일을 읽지 못했어요.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function callOcrServer(endpoint, imageDataUrl){
+  const res = await fetch(`${OCR_SERVER_URL}${endpoint}`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ image: imageDataUrl })
+  });
+  if(!res.ok){
+    throw new Error(`서버 응답 오류 (${res.status})`);
+  }
+  return res.json();
+}
+
 async function handleBossFilesSelected(files){
   if(!files || !files.length) return;
   const timeSlot = state.bossTimeSlot === 'custom' ? (state.bossCustomTime||'') : state.bossTimeSlot;
   if(!timeSlot){ showToast('보스 시간을 먼저 선택해 주세요.', true); return; }
-  setState({ ocrBusy:true, ocrProgress:'준비 중...' });
+  setState({ ocrBusy:true, ocrProgress:'서버 연결 중... (서버가 잠들어 있었다면 최대 1분 정도 걸려요)' });
   try{
-    await loadTesseract();
     let allNames = [];
-    let rawTextAll = '';
-    let debugImage = '';
     for(const file of files){
-      setState({ ocrBusy:true, ocrProgress:`이미지 처리 중 (${file.name})` });
-      const canvas = await preprocessForNicknameOcr(file);
-      if(!debugImage){ try{ debugImage = canvas.toDataURL('image/png'); }catch(e){} }
-      setState({ ocrBusy:true, ocrProgress:`이미지 인식 중 (${file.name})` });
-      const { data } = await window.Tesseract.recognize(canvas, 'kor+eng', {
-        logger: m => {
-          if(m.status === 'recognizing text'){
-            setState({ ocrBusy:true, ocrProgress:`인식 중... ${Math.round((m.progress||0)*100)}%` });
-          }
-        }
-      });
-      rawTextAll += (rawTextAll?'\n\n----------\n\n':'') + (data.text || '');
-      allNames = allNames.concat(extractNameCandidates(data.text || ''));
+      setState({ ocrBusy:true, ocrProgress:`인식 중 (${file.name})...` });
+      const dataUrl = await fileToDataURL(file);
+      const result = await callOcrServer('/recognize_names', dataUrl);
+      if(result.error) throw new Error(result.error);
+      allNames = allNames.concat(result.names || []);
     }
     const uniqueNames = Array.from(new Set(allNames));
     if(uniqueNames.length === 0){
-      setState({ ocrBusy:false, ocrProgress:'', ocrDebugOpen:true, ocrDebugText: rawTextAll, ocrDebugImage: debugImage });
+      setState({ ocrBusy:false, ocrProgress:'' });
+      showToast('스크린샷에서 이름을 인식하지 못했어요.', true);
       return;
     }
     const rows = uniqueNames.map(n => ({ name:n, include:true }));
@@ -825,7 +839,7 @@ async function handleBossFilesSelected(files){
   }catch(e){
     console.error(e);
     setState({ ocrBusy:false, ocrProgress:'' });
-    showToast('이미지 인식에 실패했어요.', true);
+    showToast('서버 인식에 실패했어요: ' + e.message, true);
   }
 }
 
@@ -909,30 +923,20 @@ function parseStorageOcrText(text){
 
 async function handleStorageFilesSelected(files){
   if(!files || !files.length) return;
-  setState({ ocrBusy:true, ocrProgress:'준비 중...' });
+  setState({ ocrBusy:true, ocrProgress:'서버 연결 중... (서버가 잠들어 있었다면 최대 1분 정도 걸려요)' });
   try{
-    await loadTesseract();
     let allRows = [];
-    let rawTextAll = '';
-    let debugImage = '';
     for(const file of files){
-      setState({ ocrBusy:true, ocrProgress:`이미지 처리 중 (${file.name})` });
-      const canvas = await preprocessForOcr(file);
-      if(!debugImage){ try{ debugImage = canvas.toDataURL('image/png'); }catch(e){} }
-      setState({ ocrBusy:true, ocrProgress:`이미지 인식 중 (${file.name})` });
-      const { data } = await window.Tesseract.recognize(canvas, 'kor+eng', {
-        logger: m => {
-          if(m.status === 'recognizing text'){
-            setState({ ocrBusy:true, ocrProgress:`인식 중... ${Math.round((m.progress||0)*100)}%` });
-          }
-        }
-      });
-      rawTextAll += (rawTextAll?'\n\n----------\n\n':'') + (data.text || '');
-      allRows = allRows.concat(parseStorageOcrText(data.text || ''));
+      setState({ ocrBusy:true, ocrProgress:`인식 중 (${file.name})...` });
+      const dataUrl = await fileToDataURL(file);
+      const result = await callOcrServer('/recognize_table', dataUrl);
+      if(result.error) throw new Error(result.error);
+      allRows = allRows.concat(parseStorageOcrText(result.text || ''));
     }
 
     if(allRows.length === 0){
-      setState({ ocrBusy:false, ocrProgress:'', ocrDebugOpen:true, ocrDebugText: rawTextAll, ocrDebugImage: debugImage });
+      setState({ ocrBusy:false, ocrProgress:'' });
+      showToast('스크린샷에서 항목을 인식하지 못했어요.', true);
       return;
     }
 
@@ -993,7 +997,6 @@ async function startLiveScan(){
     liveScanVideo.muted = true;
     await liveScanVideo.play();
     stream.getVideoTracks()[0].addEventListener('ended', stopLiveScan);
-    await loadTesseract();
     setState({ liveScanActive:true, liveScanStatus:'감시 중...' });
     liveScanTimer = setInterval(liveScanTick, LIVE_SCAN_INTERVAL_MS);
   }catch(e){
@@ -1021,10 +1024,11 @@ async function liveScanTick(){
     canvas.width = vw; canvas.height = vh;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(liveScanVideo, 0, 0, vw, vh);
-    invertCanvasInPlace(canvas);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
-    const { data } = await window.Tesseract.recognize(canvas, 'kor+eng');
-    const rows = parseStorageOcrText(data.text || '');
+    const result = await callOcrServer('/recognize_table', dataUrl);
+    if(result.error) throw new Error(result.error);
+    const rows = parseStorageOcrText(result.text || '');
 
     let added = 0;
     if(rows.length){
