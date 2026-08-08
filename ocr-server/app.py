@@ -1,4 +1,4 @@
-"""보스타임/창고 스크린샷에서 텍스트를 인식해주는 API 서버 (Hugging Face Spaces용).
+"""보스타임/창고 스크린샷에서 텍스트를 인식해주는 API 서버 (RapidOCR 기반, 경량).
 
 POST /recognize_names  -> 빨강/파랑 닉네임만 색상 필터링 후 인식
 POST /recognize_table  -> 필터 없이 표(PVP/창고) 텍스트 그대로 인식
@@ -30,16 +30,15 @@ _ocr = None
 def get_ocr():
     global _ocr
     if _ocr is None:
-        from paddleocr import PaddleOCR
+        from rapidocr import RapidOCR
 
-        _ocr = PaddleOCR(
-            lang="korean",
-            text_detection_model_name="PP-OCRv5_mobile_det",
-            text_recognition_model_name="korean_PP-OCRv5_mobile_rec",
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=False,
-            enable_mkldnn=False,
+        _ocr = RapidOCR(
+            params={
+                "Det.lang_type": "korean",
+                "Rec.lang_type": "korean",
+                "Det.model_type": "mobile",
+                "Rec.model_type": "mobile",
+            }
         )
     return _ocr
 
@@ -97,12 +96,10 @@ def extract_names(texts: list[str]) -> list[str]:
 
 def run_ocr(img: Image.Image) -> list[str]:
     ocr = get_ocr()
-    result = ocr.predict(np.array(img))
-    texts: list[str] = []
-    for res in result:
-        data = res.json["res"] if hasattr(res, "json") else res
-        texts.extend(data.get("rec_texts", []))
-    return texts
+    result = ocr(np.array(img))
+    if result is None or not result.txts:
+        return []
+    return list(result.txts)
 
 
 @app.get("/")
