@@ -1,7 +1,7 @@
 fastapi
 uvicorn[standard]
 pydantic
-rapidocr
+rapidocr==3.0.0
 onnxruntime
 pillow
 numpy
