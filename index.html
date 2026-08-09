@@ -711,32 +711,20 @@ function parsePvpOcrText(text){
 
 async function handleFilesSelected(files){
   if(!files || !files.length) return;
-  setState({ ocrBusy:true, ocrProgress:'준비 중...' });
+  setState({ ocrBusy:true, ocrProgress:'서버 연결 중... (서버가 잠들어 있었다면 최대 1분 정도 걸려요)' });
   try{
-    await loadTesseract();
     let allRows = [];
-    let rawTextAll = '';
-    let debugImage = '';
     for(const file of files){
-      setState({ ocrBusy:true, ocrProgress:`이미지 처리 중 (${file.name})` });
-      const canvas = await preprocessForOcr(file);
-      if(!debugImage){
-        try{ debugImage = canvas.toDataURL('image/png'); }catch(e){}
-      }
-      setState({ ocrBusy:true, ocrProgress:`이미지 인식 중 (${file.name})` });
-      const { data } = await window.Tesseract.recognize(canvas, 'kor+eng', {
-        logger: m => {
-          if(m.status === 'recognizing text'){
-            setState({ ocrBusy:true, ocrProgress:`인식 중... ${Math.round((m.progress||0)*100)}%` });
-          }
-        }
-      });
-      rawTextAll += (rawTextAll?'\n\n----------\n\n':'') + (data.text || '');
-      allRows = allRows.concat(parsePvpOcrText(data.text || ''));
+      setState({ ocrBusy:true, ocrProgress:`인식 중 (${file.name})...` });
+      const dataUrl = await fileToDataURL(file);
+      const result = await callOcrServer('/recognize_table', dataUrl);
+      if(result.error) throw new Error(result.error);
+      allRows = allRows.concat(parsePvpOcrText(result.text || ''));
     }
 
     if(allRows.length === 0){
-      setState({ ocrBusy:false, ocrProgress:'', ocrDebugOpen:true, ocrDebugText: rawTextAll, ocrDebugImage: debugImage });
+      setState({ ocrBusy:false, ocrProgress:'' });
+      showToast('스크린샷에서 기록을 인식하지 못했어요.', true);
       return;
     }
 
