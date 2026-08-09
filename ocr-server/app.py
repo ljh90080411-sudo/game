@@ -34,9 +34,7 @@ def get_ocr():
 
         _ocr = RapidOCR(
             params={
-                "Det.lang_type": "korean",
                 "Rec.lang_type": "korean",
-                "Det.ocr_version": OCRVersion.PPOCRV4,
                 "Rec.ocr_version": OCRVersion.PPOCRV4,
             }
         )
