@@ -36,7 +36,6 @@ def get_ocr():
             params={
                 "Det.lang_type": "korean",
                 "Rec.lang_type": "korean",
-            
             }
         )
     return _ocr
