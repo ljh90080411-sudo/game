@@ -224,7 +224,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, setDoc, addDoc, deleteDoc, collection, getDocs
+  getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ============ Firebase 연결 ============ */
@@ -341,6 +341,19 @@ async function addBossLog(data){
   const ref = await addDoc(collection(db, 'bossAttendance'), data);
   return ref.id;
 }
+async function updateBossLogDoc(id, data){
+  await updateDoc(doc(db, 'bossAttendance', id), data);
+}
+async function deleteBossLogDoc(id){
+  await deleteDoc(doc(db, 'bossAttendance', id));
+}
+async function fetchAdmins(){
+  const snap = await getDoc(doc(db, 'settings', 'admins'));
+  return (snap.exists() && Array.isArray(snap.data().value)) ? snap.data().value : [];
+}
+async function saveAdmins(ids){
+  await setDoc(doc(db, 'settings', 'admins'), { value: ids, updatedAt:Date.now() });
+}
 async function fetchStorageLogs(){
   const snap = await getDocs(collection(db, 'storageLogs'));
   return snap.docs.map(d => Object.assign({ id:d.id }, d.data()));
@@ -368,6 +381,9 @@ let state = {
   guildTracker:{ guildNames:['플레이어', '흑우들'] },
   guildModalOpen:false,
   ocrServerModalOpen:false,
+  admins:[],
+  adminModalOpen:false,
+  bossManageModalOpen:false,
   bossLogs:[],
   bossTimeSlot:'03:00',
   bossCustomTime:'',
@@ -449,11 +465,11 @@ async function handleLogin(nickname, pw, remember){
 async function enterApp(user, remember){
   setState({ screen:'loading' });
   try{
-    const [pvp, storageRecs, boss, guildTracker, killLogs, bossLogs, storageLogs] = await Promise.all([
-      fetchRecords('pvp'), fetchRecords('storage'), fetchRecords('boss'), fetchGuildTracker(), fetchKillLogs(), fetchBossLogs(), fetchStorageLogs()
+    const [pvp, storageRecs, boss, guildTracker, killLogs, bossLogs, storageLogs, admins] = await Promise.all([
+      fetchRecords('pvp'), fetchRecords('storage'), fetchRecords('boss'), fetchGuildTracker(), fetchKillLogs(), fetchBossLogs(), fetchStorageLogs(), fetchAdmins()
     ]);
     if(remember){ saveSession(user); } else { clearSession(); }
-    setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, guildTracker, killLogs, bossLogs, storageLogs, errorMsg:'' });
+    setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, guildTracker, killLogs, bossLogs, storageLogs, admins, errorMsg:'' });
   }catch(e){
     console.error(e);
     setState({ screen:'login', errorMsg:'데이터를 불러오지 못했어요. 다시 로그인해 주세요.' });
@@ -891,6 +907,81 @@ function computeBossRanking(){
   return Object.entries(totals).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
 }
 
+/* ============ 운영진(관리자) ============ */
+function isAdmin(){
+  return (state.admins||[]).includes(state.user.id);
+}
+
+async function bootstrapSelfAdmin(){
+  if((state.admins||[]).length > 0) return; // 이미 운영진이 있으면 부트스트랩 불가
+  try{
+    const ids = [state.user.id];
+    await saveAdmins(ids);
+    setState({ admins: ids });
+    showToast('첫 운영진으로 등록됐어요.');
+  }catch(e){
+    console.error(e);
+    showToast('등록에 실패했어요.', true);
+  }
+}
+
+async function addAdminById(){
+  const input = document.getElementById('f-admin-add');
+  const id = ((input && input.value) || '').trim();
+  const errEl = document.getElementById('admin-err');
+  if(!id){ if(errEl) errEl.textContent = '아이디(닉네임)를 입력해 주세요.'; return; }
+  const current = state.admins || [];
+  if(current.includes(id)){ if(errEl) errEl.textContent = '이미 운영진이에요.'; return; }
+  try{
+    const updated = current.concat([id]);
+    await saveAdmins(updated);
+    setState({ admins: updated });
+    if(input) input.value = '';
+    showToast(`'${id}'님을 운영진으로 추가했어요.`);
+  }catch(e){
+    console.error(e);
+    if(errEl) errEl.textContent = '저장에 실패했어요.';
+  }
+}
+
+async function removeAdminById(id){
+  const current = state.admins || [];
+  try{
+    const updated = current.filter(a => a !== id);
+    await saveAdmins(updated);
+    setState({ admins: updated });
+  }catch(e){
+    console.error(e);
+    showToast('삭제에 실패했어요.', true);
+  }
+}
+
+async function updateBossLogName(logId, newName){
+  const name = (newName||'').trim();
+  if(!name) return;
+  try{
+    await updateBossLogDoc(logId, { participant: name });
+    state.bossLogs = state.bossLogs.map(l => l.id===logId ? Object.assign({}, l, { participant:name }) : l);
+    setState({});
+    showToast('참가자 이름을 수정했어요.');
+  }catch(e){
+    console.error(e);
+    showToast('수정에 실패했어요.', true);
+  }
+}
+
+async function deleteBossLogById(logId){
+  try{
+    await deleteBossLogDoc(logId);
+    state.bossLogs = state.bossLogs.filter(l => l.id !== logId);
+    setState({});
+    showToast('기록을 삭제했어요.');
+  }catch(e){
+    console.error(e);
+    showToast('삭제에 실패했어요.', true);
+  }
+}
+
 /* ============ 길드 창고 스캔 ============ */
 function parseStorageOcrText(text){
   const rows = [];
@@ -1150,6 +1241,7 @@ function renderTopbar(){
       </div>
     </div>
     <div style="display:flex; gap:6px;">
+      <button class="logout-btn" id="btn-admin-settings" title="운영진 관리">👑</button>
       <button class="logout-btn" id="btn-ocr-server-settings" title="인식 서버 설정">⚙</button>
       <button class="logout-btn" id="btn-logout">로그아웃</button>
     </div>
@@ -1289,7 +1381,10 @@ function renderBossControls(){
   </div>
   <input type="file" id="boss-file-input" accept="image/*" multiple style="display:none;">
 
-  <div class="date-heading">보스 참가 랭킹 (누적, 1회=1점)</div>
+  <div class="date-heading" style="align-items:center;">
+    <span>보스 참가 랭킹 (누적, 1회=1점)</span>
+    ${isAdmin() ? `<button class="logout-btn" id="btn-boss-manage-open" style="padding:4px 10px; font-size:11px;">🛠 기록 관리</button>` : ''}
+  </div>
   ${ranking.length===0 ? `<div class="record-meta" style="padding:6px 2px 14px;">아직 참가 기록이 없어요.</div>` :
     ranking.map((r,i)=>`
       <div class="record-card" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin-bottom:6px;">
@@ -1377,6 +1472,67 @@ function renderOcrServerModal(){
       <div class="record-meta" style="margin-bottom:12px;">현재 사용 중: <b style="color:var(--gold-bright);">${esc(current)}</b></div>
       <div class="err-msg" id="ocr-server-err"></div>
       <button class="btn-primary" id="btn-ocr-server-save">저장하기</button>
+    </div>
+  </div>`;
+}
+
+function renderAdminModal(){
+  if(!state.adminModalOpen) return '';
+  const admins = state.admins || [];
+  const amAdmin = isAdmin();
+  return `
+  <div class="modal-overlay" id="admin-modal-overlay">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>운영진 관리</span>
+        <button class="modal-close" id="btn-admin-close">✕</button>
+      </div>
+      ${admins.length === 0 ? `
+        <div class="record-meta" style="margin-bottom:12px;">아직 등록된 운영진이 없어요. 지금 로그인한 계정을 첫 운영진으로 등록할 수 있어요.</div>
+        <button class="btn-primary" id="btn-admin-bootstrap">내 계정을 첫 운영진으로 등록</button>
+      ` : `
+        <div class="record-meta" style="margin-bottom:12px;">운영진만 보스 참가 기록을 수정·삭제할 수 있어요.</div>
+        <div class="chip-row" style="margin-bottom:16px;">
+          ${admins.map(id=>`
+            <span class="chip" style="display:flex; align-items:center; gap:6px; padding:5px 6px 5px 12px;">
+              ${esc(id)}${id===state.user.id?' (나)':''}
+              ${amAdmin ? `<button data-remove-admin="${esc(id)}" style="background:none; border:none; color:var(--violet); font-size:14px; padding:0 4px; cursor:pointer;">✕</button>` : ''}
+            </span>
+          `).join('')}
+        </div>
+        ${amAdmin ? `
+          <div class="field"><label>운영진으로 추가할 아이디(닉네임)</label><input id="f-admin-add" type="text" placeholder="아이디 입력"></div>
+          <div class="err-msg" id="admin-err"></div>
+          <button class="btn-primary" id="btn-admin-add">운영진 추가하기</button>
+        ` : `<div class="record-meta">운영진만 이 목록을 수정할 수 있어요.</div>`}
+      `}
+    </div>
+  </div>`;
+}
+
+function renderBossManageModal(){
+  if(!state.bossManageModalOpen) return '';
+  const logs = (state.bossLogs||[]).slice().sort((a,b)=> (b.createdAt||0) - (a.createdAt||0));
+  return `
+  <div class="modal-overlay" id="boss-manage-modal-overlay">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>보스 참가 기록 관리</span>
+        <button class="modal-close" id="btn-boss-manage-close">✕</button>
+      </div>
+      <div class="record-meta" style="margin-bottom:12px;">잘못 등록된 이름을 고치거나, 항목을 삭제할 수 있어요. (운영진 전용)</div>
+      ${logs.length===0 ? `<div class="record-meta">참가 기록이 없어요.</div>` :
+        logs.map(l=>`
+          <div class="record-card" style="margin-bottom:8px;">
+            <div class="record-meta" style="margin-bottom:6px;">${esc(l.date||'')} · ${esc(BOSS_TIME_LABELS[l.timeSlot]||l.timeSlot||'')}</div>
+            <div class="field-row" style="align-items:center;">
+              <div class="field" style="margin-bottom:0;"><input id="boss-manage-name-${l.id}" type="text" value="${esc(l.participant||'')}"></div>
+              <button class="logout-btn" data-boss-save="${l.id}" style="padding:10px 12px;">저장</button>
+              <button class="del-btn" data-boss-delete="${l.id}" style="font-size:20px;">×</button>
+            </div>
+          </div>
+        `).join('')
+      }
     </div>
   </div>`;
 }
@@ -1533,6 +1689,8 @@ function render(){
     ${renderModal()}
     ${renderGuildModal()}
     ${renderOcrServerModal()}
+    ${renderAdminModal()}
+    ${renderBossManageModal()}
     ${renderOcrBusyOverlay()}
     ${renderOcrDebugModal()}
     ${renderBossOcrModal()}
@@ -1608,6 +1766,44 @@ function attachHandlers(){
         setState({ ocrServerModalOpen:false });
         showToast(url ? `서버 주소가 '${url}'로 바뀌었어요.` : '기본 서버로 되돌렸어요.');
       };
+    }
+
+    const adminSettingsBtn = document.getElementById('btn-admin-settings');
+    if(adminSettingsBtn) adminSettingsBtn.onclick = () => setState({ adminModalOpen:true });
+
+    const adminOverlay = document.getElementById('admin-modal-overlay');
+    if(adminOverlay){
+      adminOverlay.addEventListener('click', e=>{ if(e.target===adminOverlay) setState({adminModalOpen:false}); });
+      document.getElementById('btn-admin-close').onclick = () => setState({adminModalOpen:false});
+      const bootstrapBtn = document.getElementById('btn-admin-bootstrap');
+      if(bootstrapBtn) bootstrapBtn.onclick = () => bootstrapSelfAdmin();
+      const addAdminBtn = document.getElementById('btn-admin-add');
+      if(addAdminBtn) addAdminBtn.onclick = () => addAdminById();
+      document.querySelectorAll('[data-remove-admin]').forEach(btn=>{
+        btn.onclick = () => removeAdminById(btn.getAttribute('data-remove-admin'));
+      });
+    }
+
+    const bossManageOpenBtn = document.getElementById('btn-boss-manage-open');
+    if(bossManageOpenBtn) bossManageOpenBtn.onclick = () => setState({ bossManageModalOpen:true });
+
+    const bossManageOverlay = document.getElementById('boss-manage-modal-overlay');
+    if(bossManageOverlay){
+      bossManageOverlay.addEventListener('click', e=>{ if(e.target===bossManageOverlay) setState({bossManageModalOpen:false}); });
+      document.getElementById('btn-boss-manage-close').onclick = () => setState({bossManageModalOpen:false});
+      document.querySelectorAll('[data-boss-save]').forEach(btn=>{
+        btn.onclick = () => {
+          const id = btn.getAttribute('data-boss-save');
+          const nameInput = document.getElementById(`boss-manage-name-${id}`);
+          updateBossLogName(id, nameInput ? nameInput.value : '');
+        };
+      });
+      document.querySelectorAll('[data-boss-delete]').forEach(btn=>{
+        btn.onclick = () => {
+          const id = btn.getAttribute('data-boss-delete');
+          if(confirm('이 참가 기록을 삭제할까요?')) deleteBossLogById(id);
+        };
+      });
     }
 
     const ocrUploadBtn = document.getElementById('btn-ocr-upload');
