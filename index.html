@@ -367,6 +367,7 @@ let state = {
   toastErr:false,
   guildTracker:{ guildNames:['플레이어', '흑우들'] },
   guildModalOpen:false,
+  ocrServerModalOpen:false,
   bossLogs:[],
   bossTimeSlot:'03:00',
   bossCustomTime:'',
@@ -787,7 +788,17 @@ function extractNameCandidates(text){
 }
 
 /* ============ OCR 서버(Render) 연동 ============ */
-const OCR_SERVER_URL = 'https://game-2lw0.onrender.com';
+const DEFAULT_OCR_SERVER_URL = 'https://game-2lw0.onrender.com';
+function getOcrServerUrl(){
+  try{
+    return localStorage.getItem('ocrServerUrl') || DEFAULT_OCR_SERVER_URL;
+  }catch(e){
+    return DEFAULT_OCR_SERVER_URL;
+  }
+}
+function setOcrServerUrl(url){
+  try{ localStorage.setItem('ocrServerUrl', url); }catch(e){}
+}
 
 function fileToDataURL(file){
   return new Promise((resolve, reject)=>{
@@ -799,9 +810,9 @@ function fileToDataURL(file){
 }
 
 async function callOcrServer(endpoint, imageDataUrl){
-  const res = await fetch(`${OCR_SERVER_URL}${endpoint}`, {
+  const res = await fetch(`${getOcrServerUrl()}${endpoint}`, {
     method:'POST',
-    headers:{ 'Content-Type':'application/json' },
+    headers:{ 'Content-Type':'application/json', 'ngrok-skip-browser-warning':'true' },
     body: JSON.stringify({ image: imageDataUrl })
   });
   if(!res.ok){
@@ -1138,7 +1149,10 @@ function renderTopbar(){
         <div class="topbar-user">${esc(state.user.nickname)}님 접속 중</div>
       </div>
     </div>
-    <button class="logout-btn" id="btn-logout">로그아웃</button>
+    <div style="display:flex; gap:6px;">
+      <button class="logout-btn" id="btn-ocr-server-settings" title="인식 서버 설정">⚙</button>
+      <button class="logout-btn" id="btn-logout">로그아웃</button>
+    </div>
   </div>`;
 }
 
@@ -1345,6 +1359,28 @@ function renderContent(){
   <button class="fab" id="btn-add">+</button>`;
 }
 
+function renderOcrServerModal(){
+  if(!state.ocrServerModalOpen) return '';
+  const current = getOcrServerUrl();
+  return `
+  <div class="modal-overlay" id="ocr-server-modal-overlay">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>인식 서버 주소 설정</span>
+        <button class="modal-close" id="btn-ocr-server-close">✕</button>
+      </div>
+      <div class="record-meta" style="margin-bottom:12px;">
+        보스타임/창고 스크린샷 인식에 쓸 서버 주소예요. 길드원 PC에서 돌리는 로컬 서버를 쓰려면
+        그 PC의 주소(예: http://192.168.0.5:8000)를 입력하세요. 비워두면 기본 서버를 사용해요.
+      </div>
+      <div class="field"><label>서버 주소</label><input id="f-ocr-server-url" type="text" placeholder="${esc(DEFAULT_OCR_SERVER_URL)}" value="${esc(current === DEFAULT_OCR_SERVER_URL ? '' : current)}"></div>
+      <div class="record-meta" style="margin-bottom:12px;">현재 사용 중: <b style="color:var(--gold-bright);">${esc(current)}</b></div>
+      <div class="err-msg" id="ocr-server-err"></div>
+      <button class="btn-primary" id="btn-ocr-server-save">저장하기</button>
+    </div>
+  </div>`;
+}
+
 function renderGuildModal(){
   if(!state.guildModalOpen) return '';
   const names = (state.guildTracker && state.guildTracker.guildNames) || [];
@@ -1496,6 +1532,7 @@ function render(){
     </div>
     ${renderModal()}
     ${renderGuildModal()}
+    ${renderOcrServerModal()}
     ${renderOcrBusyOverlay()}
     ${renderOcrDebugModal()}
     ${renderBossOcrModal()}
@@ -1555,6 +1592,23 @@ function attachHandlers(){
 
     const setGuildBtn = document.getElementById('btn-set-guild');
     if(setGuildBtn) setGuildBtn.onclick = () => setState({ guildModalOpen:true });
+
+    const ocrServerSettingsBtn = document.getElementById('btn-ocr-server-settings');
+    if(ocrServerSettingsBtn) ocrServerSettingsBtn.onclick = () => setState({ ocrServerModalOpen:true });
+
+    const ocrServerOverlay = document.getElementById('ocr-server-modal-overlay');
+    if(ocrServerOverlay){
+      ocrServerOverlay.addEventListener('click', e=>{ if(e.target===ocrServerOverlay) setState({ocrServerModalOpen:false}); });
+      document.getElementById('btn-ocr-server-close').onclick = () => setState({ocrServerModalOpen:false});
+      document.getElementById('btn-ocr-server-save').onclick = () => {
+        const input = document.getElementById('f-ocr-server-url');
+        let url = (input && input.value.trim()) || '';
+        if(url.endsWith('/')) url = url.slice(0, -1);
+        setOcrServerUrl(url || DEFAULT_OCR_SERVER_URL);
+        setState({ ocrServerModalOpen:false });
+        showToast(url ? `서버 주소가 '${url}'로 바뀌었어요.` : '기본 서버로 되돌렸어요.');
+      };
+    }
 
     const ocrUploadBtn = document.getElementById('btn-ocr-upload');
     const ocrFileInput = document.getElementById('ocr-file-input');
