@@ -37,7 +37,7 @@ def get_ocr():
                 "Det.lang_type": LangDet.CH,
                 "Det.model_type": ModelType.MOBILE,
                 "Rec.lang_type": LangRec.KOREAN,
-                "Rec.model_type": ModelType.MOBILE,
+                "Rec.model_type": ModelType.SERVER,
             }
         )
     return _ocr
