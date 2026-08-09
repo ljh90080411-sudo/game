@@ -98,7 +98,10 @@ def run_ocr(img: Image.Image) -> list[str]:
     ocr = get_ocr()
     result = ocr(np.array(img))
     if result is None or not result.txts:
+        print("[DEBUG] OCR 결과 없음")
         return []
+    print(f"[DEBUG] 인식된 원본 텍스트: {list(result.txts)}")
+    print(f"[DEBUG] 신뢰도 점수: {list(result.scores)}")
     return list(result.txts)
 
 
@@ -113,7 +116,21 @@ def recognize_names(body: ImageIn):
         img = decode_image(body.image)
         filtered = color_filter(img)
         texts = run_ocr(filtered)
-        return {"names": extract_names(texts)}
+        return {"names": extract_names(texts), "raw_texts": texts}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+
+
+@app.post("/debug_filter")
+def debug_filter(body: ImageIn):
+    """색상 필터링 결과 이미지를 base64로 돌려줌 (디버깅용)."""
+    try:
+        img = decode_image(body.image)
+        filtered = color_filter(img)
+        buf = io.BytesIO()
+        filtered.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode()
+        return {"image": f"data:image/png;base64,{b64}"}
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)}
 
