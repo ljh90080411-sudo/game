@@ -30,12 +30,14 @@ _ocr = None
 def get_ocr():
     global _ocr
     if _ocr is None:
-        from rapidocr import RapidOCR
+        from rapidocr import RapidOCR, OCRVersion
 
         _ocr = RapidOCR(
             params={
                 "Det.lang_type": "korean",
                 "Rec.lang_type": "korean",
+                "Det.ocr_version": OCRVersion.PPOCRV4,
+                "Rec.ocr_version": OCRVersion.PPOCRV4,
             }
         )
     return _ocr
