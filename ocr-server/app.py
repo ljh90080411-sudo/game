@@ -13,8 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel
-from scipy.ndimage import binary_dilation
-
+from scipy.ndimage import binary_dilation, label
 app = FastAPI()
 
 app.add_middleware(
@@ -52,15 +51,25 @@ def decode_image(image_b64: str) -> Image.Image:
     return Image.open(io.BytesIO(base64.b64decode(raw)))
 
 
+from scipy.ndimage import binary_dilation, label
+
 def color_filter(img: Image.Image) -> Image.Image:
     """빨강/파랑 계열 글자만 밝기 그라데이션을 살려서 남기고, 나머지는 흰 배경으로 지운다.
-    완전 이진화(흑/백)하지 않아서 글자의 안티에일리어싱(부드러운 가장자리)이 보존된다."""
+    완전 이진화(흑/백)하지 않아서 글자의 안티에일리어싱(부드러운 가장자리)이 보존되고,
+    너무 작은 얼룩(잡음)은 연결 덩어리 크기 기준으로 제거한다."""
     arr = np.array(img.convert("RGB")).astype(int)
     r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
 
     is_red = (r > 85) & ((r - g) > 22) & ((r - b) > 22) & (np.abs(g - b) < 40)
     is_blue = (b > 75) & ((b - r) > 22) & ((b - g) > 15) & (np.abs(r - g) < 45)
     mask = is_red | is_blue
+
+    labeled, _ = label(mask)
+    sizes = np.bincount(labeled.ravel())
+    keep = sizes >= 25
+    keep[0] = False
+    mask = keep[labeled]
+
     mask = binary_dilation(mask, iterations=1)
 
     lum = (0.299 * r + 0.587 * g + 0.114 * b).clip(0, 255)
