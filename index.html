@@ -354,6 +354,14 @@ async function fetchAdmins(){
 async function saveAdmins(ids){
   await setDoc(doc(db, 'settings', 'admins'), { value: ids, updatedAt:Date.now() });
 }
+async function fetchResets(){
+  const snap = await getDoc(doc(db, 'settings', 'resets'));
+  const v = (snap.exists() && snap.data().value) ? snap.data().value : {};
+  return { pvpResetAt: v.pvpResetAt || null, bossResetAt: v.bossResetAt || null };
+}
+async function saveResets(resets){
+  await setDoc(doc(db, 'settings', 'resets'), { value: resets, updatedAt:Date.now() });
+}
 async function fetchStorageLogs(){
   const snap = await getDocs(collection(db, 'storageLogs'));
   return snap.docs.map(d => Object.assign({ id:d.id }, d.data()));
@@ -383,6 +391,8 @@ let state = {
   ocrServerModalOpen:false,
   admins:[],
   adminModalOpen:false,
+  settleModalOpen:false,
+  resets:{ pvpResetAt:null, bossResetAt:null },
   bossManageModalOpen:false,
   bossLogs:[],
   bossTimeSlot:'03:00',
@@ -462,11 +472,11 @@ async function handleLogin(nickname, pw, remember){
 async function enterApp(user, remember){
   setState({ screen:'loading' });
   try{
-    const [pvp, storageRecs, boss, guildTracker, killLogs, bossLogs, storageLogs, admins] = await Promise.all([
-      fetchRecords('pvp'), fetchRecords('storage'), fetchRecords('boss'), fetchGuildTracker(), fetchKillLogs(), fetchBossLogs(), fetchStorageLogs(), fetchAdmins()
+    const [pvp, storageRecs, boss, guildTracker, killLogs, bossLogs, storageLogs, admins, resets] = await Promise.all([
+      fetchRecords('pvp'), fetchRecords('storage'), fetchRecords('boss'), fetchGuildTracker(), fetchKillLogs(), fetchBossLogs(), fetchStorageLogs(), fetchAdmins(), fetchResets()
     ]);
     if(remember){ saveSession(user); } else { clearSession(); }
-    setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, guildTracker, killLogs, bossLogs, storageLogs, admins, errorMsg:'' });
+    setState({ screen:'app', user, records:{pvp, storage:storageRecs, boss}, guildTracker, killLogs, bossLogs, storageLogs, admins, resets, errorMsg:'' });
   }catch(e){
     console.error(e);
     setState({ screen:'login', errorMsg:'데이터를 불러오지 못했어요. 다시 로그인해 주세요.' });
@@ -767,8 +777,10 @@ async function saveBossOcrNames(){
 }
 
 function computeBossRanking(){
+  const resetAt = (state.resets && state.resets.bossResetAt) || 0;
   const totals = {};
   (state.bossLogs||[]).forEach(l=>{
+    if((l.createdAt||0) <= resetAt) return; // 정산 시점 이전 기록은 누적에서 제외
     if(!totals[l.participant]) totals[l.participant] = 0;
     totals[l.participant]++;
   });
@@ -847,6 +859,20 @@ async function deleteBossLogById(logId){
   }catch(e){
     console.error(e);
     showToast('삭제에 실패했어요.', true);
+  }
+}
+
+async function settleType(kind){
+  const label = kind==='pvp' ? 'PVP' : '보스';
+  if(!confirm(`${label} 누적 점수를 정산(초기화)할까요?\n(PVP의 경우 주간/월간 랭킹은 영향받지 않아요)`)) return;
+  try{
+    const updated = Object.assign({}, state.resets, { [kind==='pvp'?'pvpResetAt':'bossResetAt']: Date.now() });
+    await saveResets(updated);
+    setState({ resets: updated, settleModalOpen:false });
+    showToast(`${label} 누적 점수가 정산됐어요.`);
+  }catch(e){
+    console.error(e);
+    showToast('정산에 실패했어요.', true);
   }
 }
 
@@ -1110,6 +1136,7 @@ function renderTopbar(){
     </div>
     <div style="display:flex; gap:6px;">
       <button class="logout-btn" id="btn-admin-settings" title="운영진 관리">👑</button>
+      ${isAdmin() ? `<button class="logout-btn" id="btn-settle-open" title="정산">💰</button>` : ''}
       <button class="logout-btn" id="btn-ocr-server-settings" title="인식 서버 설정">⚙</button>
       <button class="logout-btn" id="btn-logout">로그아웃</button>
     </div>
@@ -1197,7 +1224,8 @@ const DESCS = {
 function renderPvpControls(){
   const guildNames = (state.guildTracker && state.guildTracker.guildNames) || [];
   const namesLabel = guildNames.length ? guildNames.join(', ') : '미등록';
-  const myCount = (state.killLogs||[]).filter(l => l.author===state.user.id && (!guildNames.length || guildNames.includes(l.matchedGuild))).length;
+  const pvpResetAt = (state.resets && state.resets.pvpResetAt) || 0;
+  const myCount = (state.killLogs||[]).filter(l => l.author===state.user.id && (!guildNames.length || guildNames.includes(l.matchedGuild)) && (l.createdAt||0) > pvpResetAt).length;
   const period = state.rankPeriod || 'week';
   const ranking = computeRanking(period);
 
@@ -1340,6 +1368,29 @@ function renderOcrServerModal(){
       <div class="record-meta" style="margin-bottom:12px;">현재 사용 중: <b style="color:var(--gold-bright);">${esc(current)}</b></div>
       <div class="err-msg" id="ocr-server-err"></div>
       <button class="btn-primary" id="btn-ocr-server-save">저장하기</button>
+    </div>
+  </div>`;
+}
+
+function renderSettleModal(){
+  if(!state.settleModalOpen) return '';
+  const resets = state.resets || {};
+  const fmtWhen = (ts) => ts ? new Date(ts).toLocaleString('ko-KR') : '없음';
+  return `
+  <div class="modal-overlay" id="settle-modal-overlay">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>정산 (누적 점수 초기화)</span>
+        <button class="modal-close" id="btn-settle-close">✕</button>
+      </div>
+      <div class="record-meta" style="margin-bottom:16px;">
+        선택한 항목의 <b style="color:var(--text);">누적 점수만</b> 0으로 초기화돼요. 지난 기록 자체는 지워지지 않고,
+        PVP의 <b style="color:var(--text);">주간/월간 랭킹은 이 정산과 무관하게</b> 그대로 유지돼요.
+      </div>
+      <button class="btn-primary" id="btn-settle-pvp" style="margin-bottom:10px;">PVP 누적 정산하기</button>
+      <div class="record-meta" style="margin-bottom:16px;">마지막 정산: ${esc(fmtWhen(resets.pvpResetAt))}</div>
+      <button class="btn-primary" id="btn-settle-boss">보스 누적 정산하기</button>
+      <div class="record-meta">마지막 정산: ${esc(fmtWhen(resets.bossResetAt))}</div>
     </div>
   </div>`;
 }
@@ -1541,6 +1592,7 @@ function render(){
     ${renderGuildModal()}
     ${renderOcrServerModal()}
     ${renderAdminModal()}
+    ${renderSettleModal()}
     ${renderBossManageModal()}
     ${renderOcrBusyOverlay()}
     ${renderBossOcrModal()}
